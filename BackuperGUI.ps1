@@ -355,6 +355,8 @@ $xaml = @'
                         Style="{StaticResource WindowButton}"
                         ToolTip="Проверить обновления на GitHub"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                <TextBlock x:Name="UpdateStatus" Text="" FontSize="11" Foreground="#FF89B4FA"
+                           Margin="10,0,0,0" VerticalAlignment="Center"/>
                 <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="#FFA6E3A1" Margin="12,0,8,0"/>
                 <TextBlock x:Name="StatusText" Text="Готово" FontSize="13" VerticalAlignment="Center"/>
             </StackPanel>
@@ -385,7 +387,7 @@ $xaml = @'
 
                     <!-- Buttons -->
                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
-                        <Button x:Name="BtnBackup" Content="⟳  Скопировать сейчас" Width="165" Margin="0,0,10,0"
+                        <Button x:Name="BtnBackup" Content="⟳  Скопировать сейчас" Width="205" Margin="0,0,10,0"
                                 Style="{StaticResource PrimaryButton}"/>
                         <Button x:Name="BtnRestore" Content="↩  Восстановить файл" Width="180" Margin="0,0,10,0"
                                 Style="{StaticResource InfoButton}"/>
@@ -684,6 +686,7 @@ $btnWindowMax     = Find 'BtnWindowMax'
 $btnWindowClose   = Find 'BtnWindowClose'
 $btnCheckUpdate   = Find 'BtnCheckUpdate'
 $versionText      = Find 'VersionText'
+$updateStatus     = Find 'UpdateStatus'
 $btnRestoreVersionToBackup = Find 'BtnRestoreVersionToBackup'
 $btnRestoreVersionToServer = Find 'BtnRestoreVersionToServer'
 $btnOpenVersions  = Find 'BtnOpenVersions'
@@ -1208,7 +1211,8 @@ $btnSaveSettings.Add_Click({
     Append-Log 'Настройки сохранены.'
     Set-Status 'Настройки сохранены' '#FFA6E3A1'
     if ($chkAutoUpdate.IsChecked) {
-        Start-Process powershell.exe -ArgumentList @(
+        $updateStatus.Text = 'проверка обновлений...'
+        Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(
             '-NoProfile', '-ExecutionPolicy', 'Bypass',
             '-File', (Join-Path $BaseDir 'UpdateWindow.ps1'),
             '-InstallDir', $BaseDir, '-AutoClose'
@@ -1308,11 +1312,12 @@ if (Test-Path -LiteralPath $vf) {
 
 $btnCheckUpdate.Add_Click({
     try {
-        Start-Process powershell.exe -ArgumentList @(
+        Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(
             '-NoProfile', '-ExecutionPolicy', 'Bypass',
             '-File', (Join-Path $BaseDir 'UpdateWindow.ps1'),
             '-InstallDir', $BaseDir
         )
+        $updateStatus.Text = 'проверка обновлений...'
         Append-Log 'Открыто окно обновления.'
     } catch {
         [System.Windows.MessageBox]::Show("Ошибка запуска обновления:`n$($_.Exception.Message)",
@@ -1359,6 +1364,8 @@ $autoTimer.Start()
 $script:updateCheckJob = $null
 $script:updateCheckDone = $false
 $script:autoUpdateInProgress = $false
+$script:checkDots = 0
+$updateStatus.Text = 'проверка обновлений...'
 try {
     $script:updateCheckJob = Start-Job -ScriptBlock {
         param($base)
@@ -1368,10 +1375,14 @@ try {
 } catch { }
 
 $updateTimer = New-Object System.Windows.Threading.DispatcherTimer
-$updateTimer.Interval = [TimeSpan]::FromSeconds(2)
+$updateTimer.Interval = [TimeSpan]::FromMilliseconds(600)
 $updateTimer.Add_Tick({
     if (-not $script:updateCheckJob -or $script:updateCheckDone) { return }
-    if ($script:updateCheckJob.State -eq 'Running') { return }
+    if ($script:updateCheckJob.State -eq 'Running') {
+        $script:checkDots = ($script:checkDots + 1) % 4
+        $updateStatus.Text = 'проверка обновлений' + ('.' * $script:checkDots)
+        return
+    }
     $script:updateCheckDone = $true
     $updateTimer.Stop()
     try {
@@ -1381,12 +1392,14 @@ $updateTimer.Add_Tick({
             $newVer = $Matches[1]
             if ($chkAutoUpdate.IsChecked) {
                 Append-Log "Доступна версия $newVer. Автообновление включено - открываю окно обновления."
-                Start-Process powershell.exe -ArgumentList @(
+                $updateStatus.Text = 'установка обновления...'
+                Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(
                     '-NoProfile', '-ExecutionPolicy', 'Bypass',
                     '-File', (Join-Path $BaseDir 'UpdateWindow.ps1'),
                     '-InstallDir', $BaseDir, '-AutoClose'
                 )
             } else {
+                $updateStatus.Text = "доступна версия $newVer"
                 $versionText.Text = "версия $currentVersion  •  доступна $newVer"
                 $versionText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#FFF38BAB')
                 Append-Log "Доступна версия $newVer. Включите автообновление или нажмите «Обновить»."
@@ -1396,6 +1409,7 @@ $updateTimer.Add_Tick({
                 }
             }
         } else {
+            $updateStatus.Text = 'версия актуальна'
             Append-Log "Проверка обновлений при запуске: $text"
         }
     } catch { }
