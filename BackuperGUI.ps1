@@ -843,23 +843,15 @@ $btnPickVersions.Add_Click({
 
 $btnBackup.Add_Click({
     $btnBackup.IsEnabled = $false
-    Set-Status 'Копирование...' '#FF89B4FA'
-    Append-Log "Копирование из $($txtSource.Text) ..."
-    $window.Dispatcher.Invoke([Action]{}, 'Normal')  # give UI a chance to repaint
-
-    $job = Start-Job -ScriptBlock {
-        param($core, $src, $dst, $logs)
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $core -Source $src -Destination $dst -LogDir $logs | Out-String
-    } -ArgumentList $BackupCore, $txtSource.Text, $txtDest.Text, $txtLogs.Text
-
-    while ($job.State -eq 'Running') {
-        [System.Windows.Forms.Application]::DoEvents()
-        Start-Sleep -Milliseconds 100
-    }
-    $out = Receive-Job $job
-    Remove-Job $job
-
     try {
+        Set-Status 'Копирование...' '#FF89B4FA'
+        Append-Log "Копирование из $($txtSource.Text) ..."
+        $window.Dispatcher.Invoke([Action]{}, 'Normal')
+
+        # synchronous call: no background job, so a failure can never kill the window
+        $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $BackupCore `
+            -Source $txtSource.Text -Destination $txtDest.Text -LogDir $txtLogs.Text 2>&1 | Out-String
+
         $r = $out | ConvertFrom-Json
         foreach ($m in $r.Messages) { Append-Log $m }
         if ($r.Ok) {
@@ -871,10 +863,11 @@ $btnBackup.Add_Click({
         }
     } catch {
         Set-Status 'Ошибка' '#FFF38BAB'
-        Append-Log "Неожиданный ответ: $out"
+        Append-Log "ОШИБКА копирования: $($_.Exception.Message)"
+    } finally {
+        Refresh-Dashboard
+        $btnBackup.IsEnabled = $true
     }
-    Refresh-Dashboard
-    $btnBackup.IsEnabled = $true
 })
 
 $btnRefreshMissing.Add_Click({ Refresh-Dashboard })
