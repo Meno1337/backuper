@@ -4,6 +4,9 @@ Logs/
 Versions/
 settings.json
 
+# Release packages are uploaded as GitHub Release assets, not stored in git
+Backuper-v*.zip
+
 # Debug and temporary files
 *.log
 *.err
