@@ -32,12 +32,14 @@ $BaseDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackupCore   = Join-Path $BaseDir 'BackupCore.ps1'
 $VersionsModule = Join-Path $BaseDir 'Versions.ps1'
 $FolderPickerModule = Join-Path $BaseDir 'FolderPicker.ps1'
+$Compress7zModule   = Join-Path $BaseDir 'Compress7z.ps1'
 $SettingsFile = Join-Path $BaseDir 'settings.json'
 $UserRoot     = Join-Path $env:LOCALAPPDATA 'Backuper'
 $UserSettingsFile = Join-Path $UserRoot 'settings.json'
 $IconFile     = Join-Path $BaseDir 'app_icon_v2.ico'
 . $VersionsModule
 . $FolderPickerModule
+. $Compress7zModule
 
 # ---------- Settings ----------
 $DefaultSettings = [PSCustomObject]@{
@@ -601,9 +603,10 @@ $xaml = @'
                                    FontSize="11" Foreground="#FF89B4FA" Margin="0,4,0,0" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                             <CheckBox x:Name="ChkCompress" Foreground="#FFCDD6F4" FontSize="11"
-                                      Content=" Сжимать копии (NTFS) — экономит место на диске"/>
-                            <Button x:Name="BtnCompressNow" Content="Сжать сейчас" Width="110" Margin="12,0,0,0"
-                                    FontSize="10" Padding="6,3" Style="{StaticResource InfoButton}"/>
+                                      Content=" Сжимать копии в архивы 7z после копирования"/>
+                            <Button x:Name="BtnCompressNow" Content="Сжать в 7z" Width="110" Margin="12,0,0,0"
+                                    FontSize="10" Padding="6,3" Style="{StaticResource InfoButton}"
+                                    ToolTip="Создать/обновить .7z-архивы для каждой папки копий"/>
                         </StackPanel>
                         <TextBlock Text="Каждая папка копируется в отдельную подпапку в Files."
                                    FontSize="11" Foreground="#FF6C7086" Margin="0,4,0,0"/>
@@ -841,6 +844,8 @@ public static class CompSize {
                     if ($lo -eq 0xFFFFFFFF -and $hi -eq 0xFFFFFFFF) { $compressed += $_.Length }
                     else { $compressed += ([int64]$hi * 4294967296 + $lo) }
                 }
+                $archive = Join-Path (Split-Path -Parent $path) ((Split-Path -Leaf $path) + '.7z')
+                if (Test-Path -LiteralPath $archive) { $compressed = (Get-Item -LiteralPath $archive).Length }
                 [void]$lines.Add("$name|$count|$logical|$compressed")
             }
             return $lines.ToArray()
@@ -1165,20 +1170,19 @@ $compressTimer.Add_Tick({
     try { $out = Receive-Job $j } catch { $out = '' }
     try { Remove-Job $j -Force -ErrorAction SilentlyContinue } catch { }
     $script:compressJob = $null
-    Append-Log "Сжатие завершено."
+    foreach ($line in @($out)) { if ($line) { Append-Log $line } }
+    Append-Log "Архивация завершена."
     Update-SourceSizes
 })
 
 $btnCompressNow.Add_Click({
     $btnCompressNow.IsEnabled = $false
-    Append-Log 'Сжатие копий запущено (NTFS)...'
+    Append-Log 'Архивация копий в 7z запущена...'
     $script:compressJob = Start-Job -ScriptBlock {
-        param([string]$dest)
-        $compact = "$env:WINDIR\System32\compact.exe"
-        if (Test-Path -LiteralPath $compact) {
-            & $compact /c /s /i "$dest\*" 2>&1 | Out-Null
-        }
-    } -ArgumentList $txtDest.Text
+        param([string]$module, [string]$dest)
+        . $module
+        New-7zArchives -DestRoot $dest
+    } -ArgumentList $Compress7zModule, $txtDest.Text
     $compressTimer.Start()
     $btnCompressNow.IsEnabled = $true
 })

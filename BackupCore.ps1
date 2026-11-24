@@ -128,14 +128,6 @@ try {
         $result.Copied += $copiedHere
         Write-Log "[$folderName] $copiedHere file(s) in copy"
 
-        if ($Compress) {
-            $compact = Join-Path $env:WINDIR 'System32\compact.exe'
-            if (Test-Path -LiteralPath $compact) {
-                & $compact /c /s /i "$target\*" 2>&1 | Out-Null
-                Write-Log "[$folderName] NTFS-сжатие применено"
-            }
-        }
-
         # missing files = present in copy but gone from this source
         $sourceSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         Get-ChildItem -LiteralPath $src -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
@@ -145,6 +137,15 @@ try {
             $rel = $_.FullName.Substring($target.Length).TrimStart('\', '/')
             if (-not $sourceSet.Contains($rel)) { [void]$allMissing.Add("$folderName\$rel") }
         }
+    }
+
+    if ($Compress) {
+        try {
+            . (Join-Path $PSScriptRoot 'Compress7z.ps1')
+            $archLines = @(New-7zArchives -DestRoot $Destination)
+            foreach ($al in $archLines) { Write-Log $al }
+            Write-Log 'Архивы 7z обновлены'
+        } catch { Write-Log "Ошибка архивации 7z: $($_.Exception.Message)" }
     }
 
     $result.Missing = $allMissing.ToArray()

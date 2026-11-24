@@ -1,8 +1,9 @@
 ﻿{
-  "Version": "1.4.2-beta",
+  "Version": "1.4.21-beta",
   "RepoUrl": "https://github.com/Meno1337/backuper",
   "Notes": "Репозиторий с релизами. Для обновлений создайте Release с ZIP-архивом файлов программы."
 }
+
 
 
 
