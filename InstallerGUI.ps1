@@ -482,7 +482,8 @@ $btnInstall.Add_Click({
             }
             $script:installTimer.Stop()
             $btnInstall.IsEnabled = $true
-            if ($p.ExitCode -ne 0) {
+            $finalText = Get-Content -LiteralPath $script:installLive -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+            if ($finalText -notmatch '\[PROGRESS:100\]') {
                 Append-Log (Get-Content -LiteralPath $script:installErr -Raw -ErrorAction SilentlyContinue)
                 $progressText.Text = 'Ошибка установки'
                 [System.Windows.MessageBox]::Show('Установка завершилась с ошибкой. См. лог.', 'Ошибка', 'OK', 'Error')
