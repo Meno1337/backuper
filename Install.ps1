@@ -19,14 +19,14 @@ param(
 
 # A UTF-8 config file is the reliable way to pass Russian/UNC paths from the GUI,
 # because PowerShell 5.1 mangles non-ASCII in Start-Process -ArgumentList.
+$configShortcut = $null
 if ($ConfigFile -and (Test-Path -LiteralPath $ConfigFile)) {
     try {
         $cfg = Get-Content -LiteralPath $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($cfg.SourceFolder) { $SourceFolder = $cfg.SourceFolder }
         if ($cfg.InstallDir)   { $InstallDir   = $cfg.InstallDir }
         if ($cfg.SourceDir)    { $SourceDir    = $cfg.SourceDir }
-        if ($cfg.Shortcut -eq $true)  { $CreateShortcut = $true }
-        if ($cfg.Shortcut -eq $false) { $NoShortcut = $true }
+        $configShortcut = [bool]$cfg.Shortcut
     } catch { }
 }
 
@@ -82,7 +82,9 @@ Live '[PROGRESS:20] Папка установки выбрана'
 
 # --- 3. desktop shortcut ---
 $makeShortcut = $false
-if ($PSBoundParameters.ContainsKey('NoShortcut')) {
+if ($null -ne $configShortcut) {
+    $makeShortcut = $configShortcut
+} elseif ($PSBoundParameters.ContainsKey('NoShortcut')) {
     $makeShortcut = $false
 } elseif ($PSBoundParameters.ContainsKey('CreateShortcut')) {
     $makeShortcut = $true
