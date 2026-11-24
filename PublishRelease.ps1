@@ -50,12 +50,12 @@ try {
     } else { throw }
 }
 
-# upload ZIP asset
-$assetName = [System.IO.Path]::GetFileName($zip)
-$uploadUrl = "https://uploads.github.com/repos/Meno1337/backuper/releases/$($release.id)/assets?name=$assetName"
+# upload the single installer EXE as the only asset
+$exe = Join-Path $dir 'BackuperInstaller.exe'
+$uploadUrl = "https://uploads.github.com/repos/Meno1337/backuper/releases/$($release.id)/assets?name=BackuperInstaller.exe"
 try {
     $asset = Invoke-RestMethod -Uri $uploadUrl -Method Post -Headers $headers `
-        -InFile $zip -ContentType 'application/zip'
+        -InFile $exe -ContentType 'application/octet-stream'
     Write-Output "Asset uploaded: $($asset.name) ($($asset.size) bytes)"
 } catch {
     Write-Output "Asset upload skipped/failed: $($_.Exception.Message)"
