@@ -52,18 +52,24 @@ Write-Output "Доступна версия $latest (установлена $($i
 if ($Check) { exit 0 }
 
 $asset = $release.assets | Where-Object { $_.name -match '\.zip$' } | Select-Object -First 1
-if (-not $asset) {
-    Write-Output 'В релизе нет ZIP-архива.'
-    exit 1
+if ($asset) {
+    $downloadUrl = $asset.browser_download_url
+} else {
+    # No custom archive in the release - use the repository source archive
+    $repoBase = $RepoUrl.TrimEnd('/')
+    $downloadUrl = "$repoBase/archive/refs/heads/main.zip"
 }
 
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ('backuper_update_' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temp -Force | Out-Null
 $zip = Join-Path $temp 'update.zip'
 try {
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -Headers $headers -TimeoutSec 120
+    Invoke-WebRequest -Uri $downloadUrl -OutFile $zip -Headers $headers -TimeoutSec 120
     $unpack = Join-Path $temp 'unpacked'
     Expand-Archive -LiteralPath $zip -DestinationPath $unpack -Force
+    $roots = @(Get-ChildItem -LiteralPath $unpack -Directory -ErrorAction SilentlyContinue |
+               Where-Object { $_.Name -like 'backuper-*' })
+    if ($roots.Count -gt 0) { $unpack = $roots[0].FullName }
 
     $preserve = @('settings.json', 'app_icon_v2.ico', 'app_icon.ico', 'version.json')
     $preserveDirs = @('Files', 'Logs', 'Versions')

@@ -259,13 +259,17 @@ $btnDownloadLatest.Add_Click({
         $api = ($repoUrl -replace 'https://github\.com/', 'https://api.github.com/repos/').TrimEnd('/') + '/releases/latest'
         $rel = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'Backuper-Setup' } -TimeoutSec 20
         $asset = $rel.assets | Where-Object { $_.name -match '\.zip$' } | Select-Object -First 1
-        if (-not $asset) { throw 'В релизе нет ZIP-архива' }
+        if ($asset) { $downloadUrl = $asset.browser_download_url }
+        else { $downloadUrl = $repoUrl.TrimEnd('/') + '/archive/refs/heads/main.zip' }
         $temp = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_setup_download'
         if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }
         New-Item -ItemType Directory -Path $temp -Force | Out-Null
         $zip = Join-Path $temp 'update.zip'
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -TimeoutSec 120
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $zip -TimeoutSec 120
         Expand-Archive -LiteralPath $zip -DestinationPath $temp -Force
+        $roots = @(Get-ChildItem -LiteralPath $temp -Directory -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Name -like 'backuper-*' })
+        if ($roots.Count -gt 0) { $temp = $roots[0].FullName }
         $txtSource.Text = $temp
         $gitHubStatus.Text = "Загружена версия $($rel.tag_name). Папка источников обновлена."
         Append-Log "Скачано с GitHub в $temp"
