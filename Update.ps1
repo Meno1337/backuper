@@ -16,6 +16,8 @@ Remove-Item -LiteralPath $updateLive -Force -ErrorAction SilentlyContinue
 function UpLive {
     param([string]$Message)
     Add-Content -LiteralPath $updateLive -Value $Message -Encoding UTF8
+    # also emit to stdout so the main panel's -Check job can parse the result
+    Write-Output $Message
 }
 $versionFile = Join-Path $InstallDir 'version.json'
 

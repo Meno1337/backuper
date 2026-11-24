@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Styled update window with progress bar and live log.
 #>
@@ -72,6 +72,18 @@ $xaml = @'
             </Grid>
         </ControlTemplate>
         <Style TargetType="ScrollBar"><Setter Property="Template" Value="{StaticResource VScroll}"/></Style>
+        <Style TargetType="ProgressBar">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border Background="#FF313244" CornerRadius="6" Height="20">
+                            <Border x:Name="PART_Indicator" Background="#FFA6E3A1"
+                                    CornerRadius="6" HorizontalAlignment="Left"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="18">
@@ -90,11 +102,12 @@ $xaml = @'
             <Button x:Name="BtnClose" Content="✕" Style="{StaticResource WinBtn}" HorizontalAlignment="Right"
                     shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
         </Grid>
-        <StackPanel Grid.Row="1">
-            <TextBlock x:Name="StatusText" Text="Подготовка..." FontSize="13" Margin="0,0,0,8"/>
-            <ProgressBar x:Name="Bar" Height="18" Minimum="0" Maximum="100" Value="0"
-                         Foreground="#FFA6E3A1" Background="#FF313244"/>
-        </StackPanel>
+        <Border Grid.Row="1" Background="#FF181825" CornerRadius="10" Padding="16">
+            <StackPanel>
+                <TextBlock x:Name="StatusText" Text="Подготовка..." FontSize="13" Margin="0,0,0,10"/>
+                <ProgressBar x:Name="Bar" Height="20" Minimum="0" Maximum="100" Value="0"/>
+            </StackPanel>
+        </Border>
         <Border Grid.Row="2" Background="#FF11111B" CornerRadius="8" Padding="10" Margin="0,14,0,0">
             <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto">
                 <TextBlock x:Name="LogBox" Text="" FontFamily="Consolas" FontSize="11"

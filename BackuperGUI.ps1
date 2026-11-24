@@ -1147,6 +1147,13 @@ $btnSaveSettings.Add_Click({
     Save-Settings $settings
     Append-Log 'Настройки сохранены.'
     Set-Status 'Настройки сохранены' '#FFA6E3A1'
+    if ($chkAutoUpdate.IsChecked) {
+        Start-Process powershell.exe -ArgumentList @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass',
+            '-File', (Join-Path $BaseDir 'UpdateWindow.ps1'),
+            '-InstallDir', $BaseDir, '-AutoClose'
+        )
+    }
 })
 
 $btnInstallTask.Add_Click({
@@ -1239,12 +1246,14 @@ if (Test-Path -LiteralPath $vf) {
 
 $btnCheckUpdate.Add_Click({
     try {
-        $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $BaseDir 'Update.ps1') `
-            -Check -InstallDir $BaseDir 2>&1
-        Append-Log ($out -join ' ')
-        [System.Windows.MessageBox]::Show(($out -join "`n"), 'Backuper: обновления', 'OK', 'Information')
+        Start-Process powershell.exe -ArgumentList @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass',
+            '-File', (Join-Path $BaseDir 'UpdateWindow.ps1'),
+            '-InstallDir', $BaseDir
+        )
+        Append-Log 'Открыто окно обновления.'
     } catch {
-        [System.Windows.MessageBox]::Show("Ошибка проверки обновлений:`n$($_.Exception.Message)",
+        [System.Windows.MessageBox]::Show("Ошибка запуска обновления:`n$($_.Exception.Message)",
             'Ошибка', 'OK', 'Error')
     }
 })
@@ -1302,51 +1311,27 @@ $updateTimer.Add_Tick({
     if (-not $script:updateCheckJob -or $script:updateCheckDone) { return }
     if ($script:updateCheckJob.State -eq 'Running') { return }
     $script:updateCheckDone = $true
+    $updateTimer.Stop()
     try {
         $res = Receive-Job $script:updateCheckJob
         $text = ($res | Out-String).Trim()
-
-        if ($script:autoUpdateInProgress) {
-            # full update finished
-            $script:autoUpdateInProgress = $false
-            Append-Log "Автообновление завершено: $text"
-            try {
-                $nv = (Get-Content -LiteralPath (Join-Path $BaseDir 'version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).Version
-                $currentVersion = $nv
-                $versionText.Text = "версия $nv"
-                $versionText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#FFA6E3A1')
-            } catch { }
-            if ($trayIcon) {
-                $trayIcon.ShowBalloonTip(10000, 'Backuper: обновление',
-                    "Установлена версия $currentVersion. Перезапустите панель.", [System.Windows.Forms.ToolTipIcon]::Info)
-            }
-        } elseif ($text -match 'Доступна версия\s+(\S+)' -and $chkAutoUpdate.IsChecked) {
-            # consent given - download and install missing files automatically
+        if ($text -match 'Доступна версия\s+(\S+)') {
             $newVer = $Matches[1]
-            Append-Log "Доступна версия $newVer. Автообновление включено - устанавливаю..."
-            $versionText.Text = "обновление до $newVer..."
-            $script:autoUpdateInProgress = $true
-            $script:updateCheckDone = $false
-            try { Remove-Job $script:updateCheckJob -Force -ErrorAction SilentlyContinue } catch { }
-            try {
-                $script:updateCheckJob = Start-Job -ScriptBlock {
-                    param($base)
-                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $base 'Update.ps1') `
-                        -InstallDir $base 2>&1 | Out-String
-                } -ArgumentList $BaseDir
-            } catch {
-                $script:autoUpdateInProgress = $false
-                Append-Log "Ошибка запуска автообновления: $($_.Exception.Message)"
-            }
-            return
-        } elseif ($text -match 'Доступна версия\s+(\S+)') {
-            $newVer = $Matches[1]
-            $versionText.Text = "версия $currentVersion  •  доступна $newVer"
-            $versionText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#FFF38BAB')
-            Append-Log "Доступна новая версия $newVer. Включите автообновление в Настройках или нажмите «Обновить»."
-            if ($trayIcon) {
-                $trayIcon.ShowBalloonTip(10000, 'Backuper: обновление',
-                    "Доступна версия $newVer", [System.Windows.Forms.ToolTipIcon]::Info)
+            if ($chkAutoUpdate.IsChecked) {
+                Append-Log "Доступна версия $newVer. Автообновление включено - открываю окно обновления."
+                Start-Process powershell.exe -ArgumentList @(
+                    '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                    '-File', (Join-Path $BaseDir 'UpdateWindow.ps1'),
+                    '-InstallDir', $BaseDir, '-AutoClose'
+                )
+            } else {
+                $versionText.Text = "версия $currentVersion  •  доступна $newVer"
+                $versionText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#FFF38BAB')
+                Append-Log "Доступна версия $newVer. Включите автообновление или нажмите «Обновить»."
+                if ($trayIcon) {
+                    $trayIcon.ShowBalloonTip(10000, 'Backuper: обновление',
+                        "Доступна версия $newVer", [System.Windows.Forms.ToolTipIcon]::Info)
+                }
             }
         } else {
             Append-Log "Проверка обновлений при запуске: $text"

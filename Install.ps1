@@ -82,7 +82,7 @@ if ($null -ne $configShortcut) {
 $files = @(
     'Backup.ps1', 'BackupCore.ps1', 'BackuperGUI.ps1', 'Watcher.ps1',
     'Versions.ps1', 'FolderPicker.ps1', 'CleanLogs.ps1', 'Restore.ps1',
-    'Update.ps1', 'version.json', 'app_icon_v2.ico', 'Backuper.exe',
+    'Update.ps1', 'UpdateWindow.ps1', 'version.json', 'app_icon_v2.ico', 'Backuper.exe',
     'BackuperInstaller.exe', 'InstallerGUI.ps1', 'Launcher.cs', 'InstallerLauncher.cs',
     'BackuperStart.ps1',
     'BackuperUninstaller.exe', 'Uninstall.ps1', 'UninstallerGUI.ps1', 'UninstallerLauncher.cs',
