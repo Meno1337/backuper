@@ -43,7 +43,7 @@ if ($winProc -and $winProc.MainWindowHandle -ne [IntPtr]::Zero) {
         $tmp = Join-Path $dir 'docs\screenshot_window.png'
         $shot.Save($tmp, [System.Drawing.Imaging.ImageFormat]::Png)
         $shot.Dispose()
-        Move-Item -LiteralPath $tmp -Destination (Join-Path $dir 'docs\screenshot.png') -Force
+        Move-Item -LiteralPath $tmp -Destination (Join-Path $dir 'docs\app-screenshot.png') -Force
         Write-Output "Cropped screenshot: ${w}x${h}"
     }
 }
