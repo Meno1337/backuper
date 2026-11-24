@@ -49,6 +49,7 @@ $DefaultSettings = [PSCustomObject]@{
     LogRetentionDays  = 7
     VersionsDir       = 'C:\Users\karpovD\Desktop\backuper\Versions'
     VersionRetentionDays = 30
+    AutoUpdateEnabled    = $false
 }
 
 function Load-Settings {
@@ -525,6 +526,7 @@ $xaml = @'
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
@@ -622,7 +624,16 @@ $xaml = @'
                         <TextBlock Text="дней" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="#FFA9ADC1"/>
                     </StackPanel>
 
-                    <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal"
+                    <TextBlock Grid.Row="8" Grid.Column="0" Text="Автообновление:" VerticalAlignment="Center"
+                               Foreground="#FFA9ADC1"/>
+                    <StackPanel Grid.Row="8" Grid.Column="1" Margin="0,4,0,8">
+                        <CheckBox x:Name="ChkAutoUpdate" IsChecked="False" Foreground="#FFCDD6F4"
+                                  Content=" Разрешить автоматическую установку обновлений с GitHub"/>
+                        <TextBlock Text="Если версия не последняя, недостающие файлы будут скачаны и заменены при запуске панели. Ваши настройки, бэкапы, логи и версии сохранятся."
+                                   FontSize="11" Foreground="#FF6C7086" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal"
                                 VerticalAlignment="Bottom" Margin="0,0,0,4">
                         <Button x:Name="BtnSaveSettings" Content="💾  Сохранить настройки" Width="200" Margin="0,0,10,0"
                                 Style="{StaticResource PrimaryButton}"/>
@@ -687,6 +698,7 @@ $txtLogDays       = Find 'TxtLogDays'
 $txtVersionsDir   = Find 'TxtVersionsDir'
 $txtVersionDays   = Find 'TxtVersionDays'
 $chkAuto          = Find 'ChkAuto'
+$chkAutoUpdate    = Find 'ChkAutoUpdate'
 $statusDot        = Find 'StatusDot'
 $statusText       = Find 'StatusText'
 $statFiles        = Find 'StatFiles'
@@ -1131,6 +1143,7 @@ $btnSaveSettings.Add_Click({
     $settings.VersionsDir = $txtVersionsDir.Text
     $settings.VersionRetentionDays = [int]$txtVersionDays.Text
     $settings.AutoRunEnabled = [bool]$chkAuto.IsChecked
+    $settings.AutoUpdateEnabled = [bool]$chkAutoUpdate.IsChecked
     Save-Settings $settings
     Append-Log 'Настройки сохранены.'
     Set-Status 'Настройки сохранены' '#FFA6E3A1'
@@ -1217,6 +1230,7 @@ $txtInterval.Text = $settings.IntervalHours
 $txtLogDays.Text = $settings.LogRetentionDays
 $txtVersionDays.Text = $settings.VersionRetentionDays
 $chkAuto.IsChecked = $settings.AutoRunEnabled
+$chkAutoUpdate.IsChecked = [bool]$settings.AutoUpdateEnabled
 
 $vf = Join-Path $BaseDir 'version.json'
 if (Test-Path -LiteralPath $vf) {
@@ -1273,6 +1287,7 @@ $autoTimer.Start()
 # ---------- Silent update check on every launch (background job) ----------
 $script:updateCheckJob = $null
 $script:updateCheckDone = $false
+$script:autoUpdateInProgress = $false
 try {
     $script:updateCheckJob = Start-Job -ScriptBlock {
         param($base)
@@ -1290,11 +1305,45 @@ $updateTimer.Add_Tick({
     try {
         $res = Receive-Job $script:updateCheckJob
         $text = ($res | Out-String).Trim()
-        if ($text -match 'Доступна версия\s+(\S+)') {
+
+        if ($script:autoUpdateInProgress) {
+            # full update finished
+            $script:autoUpdateInProgress = $false
+            Append-Log "Автообновление завершено: $text"
+            try {
+                $nv = (Get-Content -LiteralPath (Join-Path $BaseDir 'version.json') -Raw -Encoding UTF8 | ConvertFrom-Json).Version
+                $currentVersion = $nv
+                $versionText.Text = "версия $nv"
+                $versionText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#FFA6E3A1')
+            } catch { }
+            if ($trayIcon) {
+                $trayIcon.ShowBalloonTip(10000, 'Backuper: обновление',
+                    "Установлена версия $currentVersion. Перезапустите панель.", [System.Windows.Forms.ToolTipIcon]::Info)
+            }
+        } elseif ($text -match 'Доступна версия\s+(\S+)' -and $chkAutoUpdate.IsChecked) {
+            # consent given - download and install missing files automatically
+            $newVer = $Matches[1]
+            Append-Log "Доступна версия $newVer. Автообновление включено - устанавливаю..."
+            $versionText.Text = "обновление до $newVer..."
+            $script:autoUpdateInProgress = $true
+            $script:updateCheckDone = $false
+            try { Remove-Job $script:updateCheckJob -Force -ErrorAction SilentlyContinue } catch { }
+            try {
+                $script:updateCheckJob = Start-Job -ScriptBlock {
+                    param($base)
+                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $base 'Update.ps1') `
+                        -InstallDir $base 2>&1 | Out-String
+                } -ArgumentList $BaseDir
+            } catch {
+                $script:autoUpdateInProgress = $false
+                Append-Log "Ошибка запуска автообновления: $($_.Exception.Message)"
+            }
+            return
+        } elseif ($text -match 'Доступна версия\s+(\S+)') {
             $newVer = $Matches[1]
             $versionText.Text = "версия $currentVersion  •  доступна $newVer"
             $versionText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#FFF38BAB')
-            Append-Log "Доступна новая версия $newVer. Нажмите «Проверить обновления» для подробностей."
+            Append-Log "Доступна новая версия $newVer. Включите автообновление в Настройках или нажмите «Обновить»."
             if ($trayIcon) {
                 $trayIcon.ShowBalloonTip(10000, 'Backuper: обновление',
                     "Доступна версия $newVer", [System.Windows.Forms.ToolTipIcon]::Info)

@@ -115,6 +115,7 @@ $settings = [PSCustomObject]@{
     LogRetentionDays     = 7
     VersionsDir          = Join-Path $installDir 'Versions'
     VersionRetentionDays = 30
+    AutoUpdateEnabled    = $false
 }
 $settings | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $installDir 'settings.json') -Encoding UTF8
 $sourceArgs = if ($settings.Sources -and $settings.Sources.Count -gt 0) {
