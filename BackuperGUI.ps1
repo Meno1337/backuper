@@ -488,7 +488,8 @@ $xaml = @'
                                Foreground="#FFA9ADC1" Margin="0,0,0,10" TextWrapping="Wrap"/>
                     <Border Grid.Row="1" Background="#FF181825" CornerRadius="8" Padding="8">
                         <ListBox x:Name="MissingList" Background="#FF181825" BorderBrush="#FF45475A"
-                                 BorderThickness="1" Foreground="#FFCDD6F4" FontSize="13" SelectionMode="Single"/>
+                                 BorderThickness="1" Foreground="#FFCDD6F4" FontSize="13" SelectionMode="Extended"
+                                 ToolTip="Можно выбрать несколько файлов: Ctrl+клик или Shift+клик"/>
                     </Border>
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
                         <Button x:Name="BtnRestoreSelected" Content="↩  Восстановить выбранный файл" Width="240"
@@ -510,7 +511,7 @@ $xaml = @'
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Снимки изменений. Раскройте дату:  + добавлен/изменён,  − удалён с сервера (время указано рядом). Выберите строку, чтобы восстановить версию. Список обновляется каждые 5 секунд."
+                    <TextBlock Grid.Row="0" Text="Снимки изменений. Раскройте дату:  + добавлен/изменён,  − удалён с сервера (время указано рядом). Отметьте чекбоксами несколько строк для пакетного восстановления. Список обновляется каждые 5 секунд."
                                Foreground="#FFA9ADC1" Margin="0,0,0,10" TextWrapping="Wrap"/>
                     <Border Grid.Row="1" Background="#FF181825" CornerRadius="8" Padding="6">
                         <TreeView x:Name="VersionTree" Background="#FF181825" BorderBrush="#FF45475A"
@@ -885,6 +886,8 @@ function Refresh-Dashboard {
     Refresh-Versions
 }
 
+$script:checkedVersions = @{}
+
 function Refresh-Versions {
     # remember expanded snapshots and selected file so auto-refresh does not reset the view
     $expanded = @{}
@@ -918,19 +921,33 @@ function Refresh-Versions {
         $node.IsExpanded = ($first -or $expanded.ContainsKey($s.Path))
         foreach ($c in $s.Changes) {
             $child = New-Object System.Windows.Controls.TreeViewItem
-            $child.Header = "$($c.Sign) $($c.Time)   $($c.Name)"
-            $color = if ($c.Sign -eq '+') { '#FFA6E3A1' } else { '#FFF38BAB' }
-            $child.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($color)
-            $child.Tag = [PSCustomObject]@{
+            $tag = [PSCustomObject]@{
                 SnapshotPath = $s.Path
                 Name         = $c.Name
                 Sign         = $c.Sign
                 Time         = $c.Time
                 IsSnapshot   = $false
             }
-            if ($selectedKey -eq "$($child.Tag.SnapshotPath)|$($child.Tag.Name)") {
-                $child.IsSelected = $true
-            }
+            $child.Tag = $tag
+            $key = "$($s.Path)|$($c.Name)"
+            $color = if ($c.Sign -eq '+') { '#FFA6E3A1' } else { '#FFF38BAB' }
+
+            $cb = New-Object System.Windows.Controls.CheckBox
+            $cb.Content = "$($c.Sign) $($c.Time)   $($c.Name)"
+            $cb.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString($color)
+            $cb.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+            $cb.Tag = $tag
+            $cb.IsChecked = $script:checkedVersions.ContainsKey($key)
+            $cb.add_Checked({
+                $t = $this.Tag
+                $script:checkedVersions["$($t.SnapshotPath)|$($t.Name)"] = $t
+            })
+            $cb.add_Unchecked({
+                $t = $this.Tag
+                $script:checkedVersions.Remove("$($t.SnapshotPath)|$($t.Name)") | Out-Null
+            })
+            $child.Header = $cb
+            if ($selectedKey -eq $key) { $child.IsSelected = $true }
             [void]$node.Items.Add($child)
         }
         [void]$versionTree.Items.Add($node)
@@ -1075,64 +1092,71 @@ $btnCopyLogs.Add_Click({
 $btnRefreshMissing.Add_Click({ Refresh-Dashboard })
 
 $btnClearMissing.Add_Click({
-    $sel = $missingList.SelectedItem
-    if (-not $sel) {
-        [System.Windows.MessageBox]::Show('Сначала выберите файл в списке.', 'Backuper', 'OK', 'Information')
+    $items = @($missingList.SelectedItems)
+    if ($items.Count -eq 0) {
+        [System.Windows.MessageBox]::Show('Сначала выберите один или несколько файлов (Ctrl/Shift+клик).', 'Backuper', 'OK', 'Information')
         return
     }
+    $list = ($items | ForEach-Object { "  $_" }) -join "`n"
     $res = [System.Windows.MessageBox]::Show(
-        "Удалить этот файл из копии?`n`n$sel`n`nНа сервере его уже нет — из резервной копии он будет удалён безвозвратно.",
+        "Удалить выбранные файлы из копии?`n`n$list`n`nНа сервере их уже нет — из резервной копии они будут удалены безвозвратно.",
         'Подтверждение очистки', 'YesNo', 'Question')
     if ($res -ne 'Yes') { return }
-    try {
-        $path = Join-Path $txtDest.Text ([string]$sel)
-        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
-        Append-Log "ОЧИЩЕНО: $sel"
-        Refresh-Dashboard
-    } catch {
-        [System.Windows.MessageBox]::Show("Ошибка очистки: $($_.Exception.Message)", 'Ошибка', 'OK', 'Error')
+    $done = 0
+    foreach ($sel in $items) {
+        try {
+            $path = Join-Path $txtDest.Text ([string]$sel)
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force; $done++ }
+            Append-Log "ОЧИЩЕНО: $sel"
+        } catch {
+            Append-Log "Ошибка очистки $sel : $($_.Exception.Message)"
+        }
     }
+    Refresh-Dashboard
 })
 
 $btnRestore.Add_Click({ Refresh-Dashboard; $tab = Find 'TabRestore'; $tab.IsSelected = $true })
 
 $btnRestoreSelected.Add_Click({
-    $sel = $missingList.SelectedItem
-    if (-not $sel) {
-        [System.Windows.MessageBox]::Show('Сначала выберите файл из списка.', 'Backuper',
+    $items = @($missingList.SelectedItems)
+    if ($items.Count -eq 0) {
+        [System.Windows.MessageBox]::Show('Сначала выберите один или несколько файлов (Ctrl/Shift+клик).', 'Backuper',
             'OK', 'Information')
         return
     }
-    # $sel looks like "FolderName\relative\path" - map back to the right source
-    $parts = $sel -split '[\\/]', 2
-    $folderName = $parts[0]
-    $relPath = if ($parts.Count -gt 1) { $parts[1] } else { '' }
-    $src = $txtSource.Text
-    foreach ($s in @(Get-SourcePaths)) {
-        if ((Get-SourceFolderName $s) -eq $folderName) { $src = $s; break }
-    }
-    $target = if ($relPath) { Join-Path $src $relPath } else { $src }
-    $msg = "Восстановить файл на сервере?`n`n$sel`n`n→ $target"
-    $res = [System.Windows.MessageBox]::Show($msg, 'Подтверждение восстановления',
-        'YesNo', 'Question')
+    $list = ($items | ForEach-Object { "  $_" }) -join "`n"
+    $res = [System.Windows.MessageBox]::Show("Восстановить выбранные файлы на сервере?`n`n$list",
+        'Подтверждение восстановления', 'YesNo', 'Question')
     if ($res -ne 'Yes') { return }
 
-    $backupFile = Join-Path $txtDest.Text $sel
-    if (-not (Test-Path -LiteralPath $backupFile)) {
-        [System.Windows.MessageBox]::Show("Файл копии не найден:`n$backupFile", 'Ошибка', 'OK', 'Error')
-        return
+    $done = 0
+    foreach ($sel in $items) {
+        # $sel looks like "FolderName\relative\path" - map back to the right source
+        $parts = [string]$sel -split '[\\/]', 2
+        $folderName = $parts[0]
+        $relPath = if ($parts.Count -gt 1) { $parts[1] } else { '' }
+        $src = $txtSource.Text
+        foreach ($s in @(Get-SourcePaths)) {
+            if ((Get-SourceFolderName $s) -eq $folderName) { $src = $s; break }
+        }
+        $target = if ($relPath) { Join-Path $src $relPath } else { $src }
+        $backupFile = Join-Path $txtDest.Text ([string]$sel)
+        try {
+            if (-not (Test-Path -LiteralPath $backupFile)) {
+                Append-Log "НЕ НАЙДЕН ФАЙЛ КОПИИ: $backupFile"
+                continue
+            }
+            $dir = Split-Path -Parent $target
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            Copy-Item -LiteralPath $backupFile -Destination $target -Force
+            $done++
+            Append-Log "ВОССТАНОВЛЕНО: $sel → $target"
+        } catch {
+            Append-Log "Ошибка восстановления $sel : $($_.Exception.Message)"
+        }
     }
-    try {
-        $dir = Split-Path -Parent $target
-        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        Copy-Item -LiteralPath $backupFile -Destination $target -Force
-        Set-Status 'Восстановлено' '#FFA6E3A1'
-        Append-Log "ВОССТАНОВЛЕНО: $sel → $target"
-        [System.Windows.MessageBox]::Show("Файл успешно восстановлен:`n$target", 'Backuper', 'OK', 'Information')
-        Refresh-Dashboard
-    } catch {
-        [System.Windows.MessageBox]::Show("Ошибка восстановления:`n$($_.Exception.Message)", 'Ошибка', 'OK', 'Error')
-    }
+    Set-Status "Восстановлено: $done" '#FFA6E3A1'
+    Refresh-Dashboard
 })
 
 $btnOpenFolder.Add_Click({
@@ -1156,69 +1180,66 @@ $btnCleanLogs.Add_Click({
     }
 })
 
-function Get-SelectedVersion {
+function Get-SelectedVersions {
+    $items = @($script:checkedVersions.Values)
+    if ($items.Count -gt 0) { return $items }
     $item = $versionTree.SelectedItem
-    if (-not $item -or -not $item.Tag -or $item.Tag.IsSnapshot) { return $null }
-    return $item.Tag
+    if ($item -and $item.Tag -and -not $item.Tag.IsSnapshot) { return @($item.Tag) }
+    return @()
 }
 
 $btnRestoreVersionToBackup.Add_Click({
-    $v = Get-SelectedVersion
-    if (-not $v) {
-        [System.Windows.MessageBox]::Show('Сначала выберите строку файла (+ или −) в дереве снимков.', 'Backuper', 'OK', 'Information')
+    $items = @(Get-SelectedVersions)
+    if ($items.Count -eq 0) {
+        [System.Windows.MessageBox]::Show('Отметьте одну или несколько строк файлов в дереве снимков.', 'Backuper', 'OK', 'Information')
         return
     }
-    $src = Join-Path $v.SnapshotPath $v.Name
-    if (-not (Test-Path -LiteralPath $src)) {
-        $src = Join-Path $txtDest.Text $v.Name
-    }
-    if (-not (Test-Path -LiteralPath $src)) {
-        [System.Windows.MessageBox]::Show("Файл версии не найден:`n$src", 'Ошибка', 'OK', 'Error')
-        return
-    }
-    $target = Join-Path $txtDest.Text $v.Name
-    $res = [System.Windows.MessageBox]::Show("Заменить текущую копию этой версией?`n`n$($v.Sign) $($v.Time)  $($v.Name)`n`n→ $target", 'Подтверждение', 'YesNo', 'Question')
+    $list = ($items | ForEach-Object { "  $($_.Sign) $($_.Time)  $($_.Name)" }) -join "`n"
+    $res = [System.Windows.MessageBox]::Show("Заменить текущие копии выбранными версиями?`n`n$list", 'Подтверждение', 'YesNo', 'Question')
     if ($res -ne 'Yes') { return }
-    try {
-        $dir = Split-Path -Parent $target
-        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        Copy-Item -LiteralPath $src -Destination $target -Force
-        Append-Log "ВЕРСИЯ → КОПИЯ: $($v.Sign) $($v.Time) $($v.Name)"
-        Set-Status 'Версия восстановлена в копию' '#FFA6E3A1'
-        Refresh-Dashboard
-    } catch {
-        [System.Windows.MessageBox]::Show("Ошибка: $($_.Exception.Message)", 'Ошибка', 'OK', 'Error')
+    $done = 0
+    foreach ($v in $items) {
+        $src = Join-Path $v.SnapshotPath $v.Name
+        if (-not (Test-Path -LiteralPath $src)) { $src = Join-Path $txtDest.Text $v.Name }
+        $target = Join-Path $txtDest.Text $v.Name
+        try {
+            if (-not (Test-Path -LiteralPath $src)) { Append-Log "НЕТ ФАЙЛА ВЕРСИИ: $src"; continue }
+            $dir = Split-Path -Parent $target
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            Copy-Item -LiteralPath $src -Destination $target -Force
+            $done++
+            Append-Log "ВЕРСИЯ → КОПИЯ: $($v.Sign) $($v.Time) $($v.Name)"
+        } catch { Append-Log "Ошибка: $($_.Exception.Message)" }
     }
+    Set-Status "Восстановлено в копию: $done" '#FFA6E3A1'
+    Refresh-Dashboard
 })
 
 $btnRestoreVersionToServer.Add_Click({
-    $v = Get-SelectedVersion
-    if (-not $v) {
-        [System.Windows.MessageBox]::Show('Сначала выберите строку файла (+ или −) в дереве снимков.', 'Backuper', 'OK', 'Information')
+    $items = @(Get-SelectedVersions)
+    if ($items.Count -eq 0) {
+        [System.Windows.MessageBox]::Show('Отметьте одну или несколько строк файлов в дереве снимков.', 'Backuper', 'OK', 'Information')
         return
     }
-    $src = Join-Path $v.SnapshotPath $v.Name
-    if (-not (Test-Path -LiteralPath $src)) {
-        $src = Join-Path $txtDest.Text $v.Name
-    }
-    if (-not (Test-Path -LiteralPath $src)) {
-        [System.Windows.MessageBox]::Show("Файл версии не найден:`n$src", 'Ошибка', 'OK', 'Error')
-        return
-    }
-    $target = Join-Path $txtSource.Text $v.Name
-    $res = [System.Windows.MessageBox]::Show("Восстановить эту версию на СЕРВЕР?`n`n$($v.Sign) $($v.Time)  $($v.Name)`n`n→ $target", 'Подтверждение восстановления', 'YesNo', 'Question')
+    $list = ($items | ForEach-Object { "  $($_.Sign) $($_.Time)  $($_.Name)" }) -join "`n"
+    $res = [System.Windows.MessageBox]::Show("Восстановить выбранные версии на СЕРВЕР?`n`n$list", 'Подтверждение восстановления', 'YesNo', 'Question')
     if ($res -ne 'Yes') { return }
-    try {
-        $dir = Split-Path -Parent $target
-        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-        Copy-Item -LiteralPath $src -Destination $target -Force
-        Append-Log "ВЕРСИЯ → СЕРВЕР: $($v.Sign) $($v.Time) $($v.Name)"
-        Set-Status 'Версия восстановлена на сервере' '#FFA6E3A1'
-        [System.Windows.MessageBox]::Show("Восстановлено на сервере:`n$target", 'Backuper', 'OK', 'Information')
-        Refresh-Dashboard
-    } catch {
-        [System.Windows.MessageBox]::Show("Ошибка: $($_.Exception.Message)", 'Ошибка', 'OK', 'Error')
+    $done = 0
+    foreach ($v in $items) {
+        $src = Join-Path $v.SnapshotPath $v.Name
+        if (-not (Test-Path -LiteralPath $src)) { $src = Join-Path $txtDest.Text $v.Name }
+        $target = Join-Path $txtSource.Text $v.Name
+        try {
+            if (-not (Test-Path -LiteralPath $src)) { Append-Log "НЕТ ФАЙЛА ВЕРСИИ: $src"; continue }
+            $dir = Split-Path -Parent $target
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            Copy-Item -LiteralPath $src -Destination $target -Force
+            $done++
+            Append-Log "ВЕРСИЯ → СЕРВЕР: $($v.Sign) $($v.Time) $($v.Name)"
+        } catch { Append-Log "Ошибка: $($_.Exception.Message)" }
     }
+    Set-Status "Восстановлено на сервере: $done" '#FFA6E3A1'
+    Refresh-Dashboard
 })
 
 $btnOpenVersions.Add_Click({
