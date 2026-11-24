@@ -48,9 +48,15 @@ if (Test-Path -LiteralPath $versionFile) {
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Backuper — установка" Height="640" Width="780"
         MinHeight="560" MinWidth="680" WindowStartupLocation="CenterScreen"
+        WindowStyle="None" ResizeMode="CanResize"
         Background="#FF1E1E2E">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="70" CornerRadius="8" ResizeBorderThickness="6"
+                            GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
     <Window.Resources>
         <LinearGradientBrush x:Key="PrimaryBrush" StartPoint="0,0" EndPoint="0,1">
             <GradientStop Color="#FFA6E3A1" Offset="0"/>
@@ -104,6 +110,100 @@ $xaml = @'
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="#FFCDD6F4"/>
         </Style>
+
+        <!-- Window caption buttons -->
+        <Style x:Key="WindowButton" TargetType="Button">
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#FFCDD6F4"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontFamily" Value="Segoe UI Symbol"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="wbd" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="wbd" Property="Background" Value="#FF45475A"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="WindowCloseButton" TargetType="Button" BasedOn="{StaticResource WindowButton}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="wbd" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="wbd" Property="Background" Value="#FFE05565"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Styled scrollbars -->
+        <Style x:Key="ScrollBarPageButton" TargetType="RepeatButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton"><Border Background="#00000000"/></ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ScrollBarThumb" TargetType="Thumb">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="thumb" Background="#FF585B70" CornerRadius="6" Margin="2"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="thumb" Property="Background" Value="#FFA6E3A1"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="thumb" Property="Background" Value="#FF89B4FA"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <ControlTemplate x:Key="VerticalScrollBarTemplate" TargetType="ScrollBar">
+            <Grid Background="#FF11111B" Width="13">
+                <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="Vertical">
+                    <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Style="{StaticResource ScrollBarPageButton}"/></Track.DecreaseRepeatButton>
+                    <Track.Thumb><Thumb Style="{StaticResource ScrollBarThumb}"/></Track.Thumb>
+                    <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Style="{StaticResource ScrollBarPageButton}"/></Track.IncreaseRepeatButton>
+                </Track>
+            </Grid>
+        </ControlTemplate>
+        <ControlTemplate x:Key="HorizontalScrollBarTemplate" TargetType="ScrollBar">
+            <Grid Background="#FF11111B" Height="13">
+                <Track x:Name="PART_Track" Orientation="Horizontal">
+                    <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageLeftCommand" Style="{StaticResource ScrollBarPageButton}"/></Track.DecreaseRepeatButton>
+                    <Track.Thumb><Thumb Style="{StaticResource ScrollBarThumb}"/></Track.Thumb>
+                    <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageRightCommand" Style="{StaticResource ScrollBarPageButton}"/></Track.IncreaseRepeatButton>
+                </Track>
+            </Grid>
+        </ControlTemplate>
+        <Style TargetType="ScrollBar">
+            <Setter Property="Template" Value="{StaticResource VerticalScrollBarTemplate}"/>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Template" Value="{StaticResource HorizontalScrollBarTemplate}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="18">
@@ -113,11 +213,26 @@ $xaml = @'
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,16">
-            <TextBlock Text="Backuper — установка" FontSize="24" FontWeight="Bold" Foreground="#FFA6E3A1"/>
-            <TextBlock Text="Мастер установки: укажите папку сервера и место установки программы"
-                       FontSize="13" Foreground="#FFA9ADC1" Margin="0,4,0,0"/>
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Backuper — установка" FontSize="24" FontWeight="Bold" Foreground="#FFA6E3A1"/>
+                <TextBlock Text="Мастер установки: укажите папку сервера и место установки программы"
+                           FontSize="13" Foreground="#FFA9ADC1" Margin="0,4,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button x:Name="BtnWindowMin" Content="—" ToolTip="Свернуть"
+                        Style="{StaticResource WindowButton}" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                <Button x:Name="BtnWindowMax" Content="□" ToolTip="Развернуть / восстановить"
+                        Style="{StaticResource WindowButton}" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                <Button x:Name="BtnWindowClose" Content="✕" ToolTip="Выход"
+                        Style="{StaticResource WindowCloseButton}" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+            </StackPanel>
+        </Grid>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
@@ -183,9 +298,15 @@ $xaml = @'
                     </StackPanel>
                 </Border>
 
+                <!-- Install progress -->
+                <ProgressBar x:Name="InstallProgress" Height="20" Minimum="0" Maximum="100" Value="0"
+                             Foreground="#FFA6E3A1" Background="#FF313244" Margin="0,4,0,8"/>
+                <TextBlock x:Name="ProgressText" Text="Готово к установке" FontSize="12"
+                           Foreground="#FFA9ADC1" Margin="0,0,0,8"/>
+
                 <!-- Install button -->
                 <Button x:Name="BtnInstall" Content="✅  УСТАНОВИТЬ" Height="46" FontSize="16"
-                        Style="{StaticResource PrimaryButton}" Margin="0,4,0,12"/>
+                        Style="{StaticResource PrimaryButton}" Margin="0,0,0,12"/>
 
                 <!-- Log -->
                 <Border Background="#FF11111B" CornerRadius="8" Padding="10" Height="150">
@@ -213,12 +334,24 @@ $chkShortcut = Find 'ChkShortcut'; $btnInstall = Find 'BtnInstall'
 $btnCheckGitHub = Find 'BtnCheckGitHub'; $btnDownloadLatest = Find 'BtnDownloadLatest'
 $repoText = Find 'RepoText'; $gitHubStatus = Find 'GitHubStatus'
 $logBox = Find 'LogBox'; $logScroll = Find 'LogScroll'
+$installProgress = Find 'InstallProgress'; $progressText = Find 'ProgressText'
+$btnWindowMin = Find 'BtnWindowMin'; $btnWindowMax = Find 'BtnWindowMax'; $btnWindowClose = Find 'BtnWindowClose'
 
 function Append-Log {
     param([string]$Text)
     $logBox.Text += "$Text`n"
     $logScroll.ScrollToEnd()
 }
+
+$btnWindowMin.Add_Click({ $window.WindowState = [System.Windows.WindowState]::Minimized })
+$btnWindowMax.Add_Click({
+    if ($window.WindowState -eq [System.Windows.WindowState]::Maximized) {
+        $window.WindowState = [System.Windows.WindowState]::Normal
+    } else {
+        $window.WindowState = [System.Windows.WindowState]::Maximized
+    }
+})
+$btnWindowClose.Add_Click({ $window.Close() })
 
 $repoText.Text = "Источник обновлений: $repoUrl`nТекущая версия: $currentVersion"
 Append-Log "Backuper Setup готов. $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
@@ -294,17 +427,63 @@ $btnInstall.Add_Click({
     if (-not $chkShortcut.IsChecked) { $args += ' -NoShortcut' }
     $out = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_output.txt'
     $err = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_error.txt'
-    $proc = Start-Process powershell.exe -ArgumentList $args -Wait -PassThru `
+    Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue
+    $script:installProc = Start-Process powershell.exe -ArgumentList $args -PassThru `
         -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden
-    Append-Log (Get-Content -LiteralPath $out -Raw -ErrorAction SilentlyContinue)
-    if ($proc.ExitCode -ne 0) {
-        Append-Log (Get-Content -LiteralPath $err -Raw -ErrorAction SilentlyContinue)
-        [System.Windows.MessageBox]::Show('Установка завершилась с ошибкой. См. лог.', 'Ошибка', 'OK', 'Error')
-    } else {
-        Append-Log 'Установка завершена успешно.'
-        [System.Windows.MessageBox]::Show('Backuper установлен успешно!', 'Backuper Setup', 'OK', 'Information')
+    $script:installOut = $out
+    $script:installErr = $err
+    $script:installLastLen = 0
+    $installProgress.Value = 0
+    $progressText.Text = 'Установка выполняется...'
+
+    if (-not $script:installTimer) {
+        $script:installTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:installTimer.Interval = [TimeSpan]::FromMilliseconds(400)
+        $script:installTimer.Add_Tick({
+            $p = $script:installProc
+            if (-not $p) { return }
+            $text = Get-Content -LiteralPath $script:installOut -Raw -ErrorAction SilentlyContinue
+            if ($text) {
+                if ($text.Length -gt $script:installLastLen) {
+                    $newPart = $text.Substring($script:installLastLen)
+                    $script:installLastLen = $text.Length
+                    foreach ($line in ($newPart -split "`r?`n")) {
+                        if ($line) { Append-Log $line }
+                        if ($line -match '\[PROGRESS:(\d+)\]\s*(.*)') {
+                            $installProgress.Value = [int]$Matches[1]
+                            $progressText.Text = $Matches[2]
+                        }
+                    }
+                }
+            }
+            if (-not $p.HasExited) { return }
+            # final read
+            $text = Get-Content -LiteralPath $script:installOut -Raw -ErrorAction SilentlyContinue
+            if ($text -and $text.Length -gt $script:installLastLen) {
+                foreach ($line in (($text.Substring($script:installLastLen)) -split "`r?`n")) {
+                    if ($line) { Append-Log $line }
+                    if ($line -match '\[PROGRESS:(\d+)\]\s*(.*)') {
+                        $installProgress.Value = [int]$Matches[1]
+                        $progressText.Text = $Matches[2]
+                    }
+                }
+            }
+            $script:installTimer.Stop()
+            $btnInstall.IsEnabled = $true
+            if ($p.ExitCode -ne 0) {
+                Append-Log (Get-Content -LiteralPath $script:installErr -Raw -ErrorAction SilentlyContinue)
+                $progressText.Text = 'Ошибка установки'
+                [System.Windows.MessageBox]::Show('Установка завершилась с ошибкой. См. лог.', 'Ошибка', 'OK', 'Error')
+            } else {
+                $installProgress.Value = 100
+                $progressText.Text = 'Установка завершена'
+                Append-Log 'Установка завершена успешно.'
+                [System.Windows.MessageBox]::Show('Backuper установлен успешно!', 'Backuper Setup', 'OK', 'Information')
+            }
+            $script:installProc = $null
+        })
     }
-    $btnInstall.IsEnabled = $true
+    $script:installTimer.Start()
 })
 
 $window.ShowDialog() | Out-Null

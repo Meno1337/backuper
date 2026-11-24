@@ -47,6 +47,7 @@ if (-not $SourceFolder) {
     }
 }
 if (-not $SourceFolder) { Write-Host 'Отменено.'; exit 1 }
+Write-Output '[PROGRESS:10] Источник выбран'
 Write-Host "Источник: $SourceFolder"
 
 # --- 2. install directory ---
@@ -56,6 +57,7 @@ if (-not $InstallDir) {
     $InstallDir = if ($answer) { $answer.Trim('"') } else { $defaultInstall }
 }
 Write-Host "Установка в: $InstallDir"
+Write-Output '[PROGRESS:20] Папка установки выбрана'
 
 # --- 3. desktop shortcut ---
 $makeShortcut = -not $NoShortcut
@@ -70,9 +72,11 @@ $files = @(
     'Versions.ps1', 'FolderPicker.ps1', 'CleanLogs.ps1', 'Restore.ps1',
     'Update.ps1', 'version.json', 'app_icon_v2.ico', 'Backuper.exe',
     'BackuperInstaller.exe', 'InstallerGUI.ps1', 'Launcher.cs', 'InstallerLauncher.cs',
+    'BackuperUninstaller.exe', 'Uninstall.ps1', 'UninstallerGUI.ps1', 'UninstallerLauncher.cs',
     'MakeIcon.ps1', 'MakeShortcut.ps1', 'ИНСТРУКЦИЯ.md',
     'Открыть панель управления.cmd'
 )
+Write-Output '[PROGRESS:30] Копирование файлов программы...'
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 foreach ($f in $files) {
     $src = Join-Path $sourceDir $f
@@ -98,6 +102,7 @@ $settings = [PSCustomObject]@{
     VersionRetentionDays = 30
 }
 $settings | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $installDir 'settings.json') -Encoding UTF8
+Write-Output '[PROGRESS:50] Настройки созданы'
 
 # --- 6. scheduled tasks ---
 $a = New-ScheduledTaskAction -Execute 'powershell.exe' `
@@ -145,10 +150,12 @@ if ($makeShortcut) {
     $sc.Save()
 }
 
+Write-Output '[PROGRESS:80] Задачи планировщика зарегистрированы'
 Start-ScheduledTask -TaskName 'BackuperWatcher' -ErrorAction SilentlyContinue
+Write-Output '[PROGRESS:100] Установка завершена'
 Write-Host ''
 Write-Host '=== Установка завершена ==='
 Write-Host "Программа установлена в: $installDir"
 Write-Host "Источник: $sourceFolder"
 Write-Host 'Задачи планировщика зарегистрированы.'
-Read-Host 'Нажмите Enter для выхода'
+if (-not $Silent) { Read-Host 'Нажмите Enter для выхода' }
