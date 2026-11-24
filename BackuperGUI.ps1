@@ -49,7 +49,7 @@ $DefaultSettings = [PSCustomObject]@{
     LogRetentionDays  = 7
     VersionsDir       = 'C:\Users\karpovD\Desktop\backuper\Versions'
     VersionRetentionDays = 30
-    AutoUpdateEnabled    = $false
+    AutoUpdateEnabled    = $true
 }
 
 function Load-Settings {
@@ -98,8 +98,8 @@ $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="Backuper — резервное копирование" Height="620" Width="900"
-        MinHeight="480" MinWidth="700"
+        Title="Backuper — резервное копирование" Height="800" Width="1120"
+        MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" ResizeMode="CanResize"
         Background="#FF1E1E2E">
@@ -627,7 +627,7 @@ $xaml = @'
                     <TextBlock Grid.Row="8" Grid.Column="0" Text="Автообновление:" VerticalAlignment="Center"
                                Foreground="#FFA9ADC1"/>
                     <StackPanel Grid.Row="8" Grid.Column="1" Margin="0,4,0,8">
-                        <CheckBox x:Name="ChkAutoUpdate" IsChecked="False" Foreground="#FFCDD6F4"
+                        <CheckBox x:Name="ChkAutoUpdate" IsChecked="True" Foreground="#FFCDD6F4"
                                   Content=" Разрешить автоматическую установку обновлений с GitHub"/>
                         <TextBlock Text="Если версия не последняя, недостающие файлы будут скачаны и заменены при запуске панели. Ваши настройки, бэкапы, логи и версии сохранятся."
                                    FontSize="11" Foreground="#FF6C7086" Margin="0,4,0,0" TextWrapping="Wrap"/>
@@ -1428,3 +1428,4 @@ try {
     $trayIcon.Dispose()
     $trayMenu.Dispose()
 }
+
