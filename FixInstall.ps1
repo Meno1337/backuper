@@ -19,7 +19,7 @@ $pr = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -R
 $lg = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 
 $a1 = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$pf\Backup.ps1`" -Source `"$src`" -LogRetentionDays 7 -VersionsDir `"$pf\Versions`"" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$pf\Backup.ps1`" -Source `"$src`" -Destination `"$pf\Files`" -LogDir `"$pf\Logs`" -LogRetentionDays 7 -VersionsDir `"$pf\Versions`"" `
     -WorkingDirectory $pf
 $tr = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddHours(2)) `
     -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Days 3650)
@@ -28,7 +28,7 @@ Unregister-ScheduledTask -TaskName 'BackuperHourly' -Confirm:$false -ErrorAction
 Register-ScheduledTask -TaskName 'BackuperHourly' -Action $a1 -Trigger @($tr, $lg) -Settings $st -Principal $pr | Out-Null
 
 $a2 = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$pf\Watcher.ps1`" -Source `"$src`" -VersionsDir `"$pf\Versions`"" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$pf\Watcher.ps1`" -Source `"$src`" -Destination `"$pf\Files`" -LogDir `"$pf\Logs`" -VersionsDir `"$pf\Versions`"" `
     -WorkingDirectory $pf
 $sw = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
 Unregister-ScheduledTask -TaskName 'BackuperWatcher' -Confirm:$false -ErrorAction SilentlyContinue

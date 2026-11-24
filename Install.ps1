@@ -133,7 +133,7 @@ Live '[PROGRESS:50] Настройки созданы'
 
 # --- 6. scheduled tasks ---
 $a = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Backup.ps1`" -Source `"$($settings.Source)`" -LogRetentionDays 7 -VersionsDir `"$installDir\Versions`"" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Backup.ps1`" -Source `"$($settings.Source)`" -Destination `"$installDir\Files`" -LogDir `"$installDir\Logs`" -LogRetentionDays 7 -VersionsDir `"$installDir\Versions`"" `
     -WorkingDirectory $installDir
 $t1 = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddHours(2)) `
     -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Days 3650)
@@ -145,7 +145,7 @@ Register-ScheduledTask -TaskName 'BackuperHourly' -Action $a -Trigger @($t1, $t2
     -Description 'Backuper: копирование каждые 2 часа + уведомления' | Out-Null
 
 $aw = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Watcher.ps1`" -Source `"$($settings.Source)`" -VersionsDir `"$installDir\Versions`"" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Watcher.ps1`" -Source `"$($settings.Source)`" -Destination `"$installDir\Files`" -LogDir `"$installDir\Logs`" -VersionsDir `"$installDir\Versions`"" `
     -WorkingDirectory $installDir
 $tw = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $sw = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
