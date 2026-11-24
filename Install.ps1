@@ -193,7 +193,7 @@ Live '[PROGRESS:80] Задачи планировщика зарегистрир
 $uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper'
 New-Item -Path $uninstallKey -Force | Out-Null
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayName' -Value 'Backuper' -Force
-Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.2.1' -Force
+Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.2.0' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'Publisher' -Value 'Backuper' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayIcon' -Value (Join-Path $installDir 'app_icon_v2.ico') -Force
 Set-ItemProperty -Path $uninstallKey -Name 'UninstallString' -Value ('"' + (Join-Path $installDir 'BackuperUninstaller.exe') + '"') -Force
@@ -223,4 +223,5 @@ Write-Host "Программа установлена в: $installDir"
 Write-Host "Источник: $sourceFolder"
 Write-Host 'Задачи планировщика зарегистрированы.'
 if (-not $Silent) { Read-Host 'Нажмите Enter для выхода' }
+
 
