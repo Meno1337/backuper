@@ -17,7 +17,18 @@ $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $logFile   = Join-Path $LogDir "backup_$timestamp.log"
 $missingFile = Join-Path $LogDir "missing_$timestamp.txt"
 
-New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+# If Program Files is not writable (non-elevated panel/task), use user profile
+$userRoot = Join-Path $env:LOCALAPPDATA 'Backuper'
+function Test-Writable([string]$dir) {
+    try {
+        New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null
+        $p = Join-Path $dir ('.w_' + [guid]::NewGuid().ToString('N'))
+        [System.IO.File]::WriteAllText($p, '')
+        Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch { return $false }
+}
+if (-not (Test-Writable $Destination)) { $Destination = Join-Path $userRoot 'Files' }
 
 # If the panel is running without admin rights, Program Files\Logs is read-only.
 # Fall back to a user-writable location instead of failing the whole copy.

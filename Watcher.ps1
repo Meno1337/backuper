@@ -16,7 +16,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+# fallback when the task runs without admin rights (Program Files is read-only)
+$userRoot = Join-Path $env:LOCALAPPDATA 'Backuper'
+function Test-Writable([string]$dir) {
+    try {
+        New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null
+        $p = Join-Path $dir ('.w_' + [guid]::NewGuid().ToString('N'))
+        [System.IO.File]::WriteAllText($p, '')
+        Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch { return $false }
+}
+if (-not (Test-Writable $Destination)) { $Destination = Join-Path $userRoot 'Files' }
 # fallback when the task runs without admin rights (Program Files is read-only)
 try {
     New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction Stop | Out-Null

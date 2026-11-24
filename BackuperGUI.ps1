@@ -33,6 +33,8 @@ $BackupCore   = Join-Path $BaseDir 'BackupCore.ps1'
 $VersionsModule = Join-Path $BaseDir 'Versions.ps1'
 $FolderPickerModule = Join-Path $BaseDir 'FolderPicker.ps1'
 $SettingsFile = Join-Path $BaseDir 'settings.json'
+$UserRoot     = Join-Path $env:LOCALAPPDATA 'Backuper'
+$UserSettingsFile = Join-Path $UserRoot 'settings.json'
 $IconFile     = Join-Path $BaseDir 'app_icon_v2.ico'
 . $VersionsModule
 . $FolderPickerModule
@@ -50,9 +52,10 @@ $DefaultSettings = [PSCustomObject]@{
 }
 
 function Load-Settings {
-    if (Test-Path -LiteralPath $SettingsFile) {
+    $path = if (Test-Path -LiteralPath $UserSettingsFile) { $UserSettingsFile } else { $SettingsFile }
+    if (Test-Path -LiteralPath $path) {
         try {
-            $s = Get-Content -LiteralPath $SettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            $s = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
             # merge with defaults
             $d = $DefaultSettings.PSObject.Properties.Name
             foreach ($p in $d) {
@@ -68,7 +71,23 @@ function Load-Settings {
 
 function Save-Settings {
     param([PSCustomObject]$Settings)
-    $Settings | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $SettingsFile -Encoding UTF8
+    try {
+        $Settings | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $SettingsFile -Encoding UTF8 -ErrorAction Stop
+    } catch {
+        # Program Files is read-only without admin - save under the user profile
+        New-Item -ItemType Directory -Path $UserRoot -Force | Out-Null
+        $Settings | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $UserSettingsFile -Encoding UTF8
+    }
+}
+
+function Test-Writable([string]$dir) {
+    try {
+        New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null
+        $p = Join-Path $dir ('.w_' + [guid]::NewGuid().ToString('N'))
+        [System.IO.File]::WriteAllText($p, '')
+        Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch { return $false }
 }
 
 $settings = Load-Settings
@@ -1109,9 +1128,13 @@ $btnInstallTask.Add_Click({
 $txtSource.Text = $settings.Source
 $txtDest.Text   = $settings.Destination
 $txtLogs.Text   = $settings.LogDir
+$txtVersionsDir.Text = $settings.VersionsDir
+# non-elevated panel cannot write into Program Files - switch to user profile
+if (-not (Test-Writable $txtDest.Text)) { $txtDest.Text = Join-Path $UserRoot 'Files' }
+if (-not (Test-Writable $txtLogs.Text)) { $txtLogs.Text = Join-Path $UserRoot 'Logs' }
+if (-not (Test-Writable $txtVersionsDir.Text)) { $txtVersionsDir.Text = Join-Path $UserRoot 'Versions' }
 $txtInterval.Text = $settings.IntervalHours
 $txtLogDays.Text = $settings.LogRetentionDays
-$txtVersionsDir.Text = $settings.VersionsDir
 $txtVersionDays.Text = $settings.VersionRetentionDays
 $chkAuto.IsChecked = $settings.AutoRunEnabled
 
