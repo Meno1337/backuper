@@ -1,22 +1,29 @@
 ﻿<#
 .SYNOPSIS
-    Live watcher: detects new/changed files on a network share and copies them immediately.
-    Uses polling (not FileSystemWatcher) because UNC/SMB shares often do not
-    deliver change notifications reliably.
-    Never deletes files from the copy.
+    Live watcher for multiple sources. Each source is copied into its own
+    named subfolder under Destination. Polling is used for UNC reliability.
 #>
 
 param(
-    [string]$Source      = '\\Lpu6011-app010\transfer\карпов',
+    [string]$Source      = '',
+    [string[]]$Sources   = @(),
     [string]$Destination = 'C:\Users\karpovD\Desktop\backuper\Files',
     [string]$LogDir      = 'C:\Users\karpovD\Desktop\backuper\Logs',
     [string]$VersionsDir = 'C:\Users\karpovD\Desktop\backuper\Versions',
-    # How often to check the source for new files (seconds)
     [int]$PollSeconds = 20
 )
 
 $ErrorActionPreference = 'Stop'
-# fallback when the task runs without admin rights (Program Files is read-only)
+$expandedSources = [System.Collections.Generic.List[string]]::new()
+foreach ($s in @($Sources)) {
+    foreach ($p in ([string]$s -split '\|')) { if ($p.Trim()) { [void]$expandedSources.Add($p.Trim()) } }
+}
+$Sources = $expandedSources.ToArray()
+if ($Sources.Count -eq 0) {
+    if ($Source) { $Sources = @($Source) }
+    else { $Sources = @('\\Lpu6011-app010\transfer\карпов') }
+}
+
 $userRoot = Join-Path $env:LOCALAPPDATA 'Backuper'
 function Test-Writable([string]$dir) {
     try {
@@ -28,21 +35,36 @@ function Test-Writable([string]$dir) {
     } catch { return $false }
 }
 if (-not (Test-Writable $Destination)) { $Destination = Join-Path $userRoot 'Files' }
-# fallback when the task runs without admin rights (Program Files is read-only)
 try {
     New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction Stop | Out-Null
     $probe = Join-Path $LogDir ('.write_test_' + [guid]::NewGuid().ToString('N'))
     [System.IO.File]::WriteAllText($probe, '')
     Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
 } catch {
-    $LogDir = Join-Path $env:LOCALAPPDATA 'Backuper\Logs'
+    $LogDir = Join-Path $userRoot 'Logs'
     New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 }
 $logFile = Join-Path $LogDir ("watcher_" + (Get-Date -Format 'yyyyMMdd') + ".log")
+
 function Log {
     param([string]$Message)
     $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $Message"
     Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8
+}
+
+function Get-SourceName([string]$path) {
+    $name = ($path.TrimEnd('\', '/') -split '[\\/]')[-1]
+    if (-not $name) { $name = 'source' }
+    return ($name -replace '[<>:"|?*]', '_')
+}
+
+# map source -> target folder name
+$sourceMap = @{}
+$used = @{}
+foreach ($s in $Sources) {
+    $n = Get-SourceName $s
+    if ($used.ContainsKey($n)) { $used[$n]++; $n = "$n-$($used[$n])" } else { $used[$n] = 1 }
+    $sourceMap[$s] = $n
 }
 
 $script:lastToast = (Get-Date).AddHours(-1)
@@ -62,87 +84,76 @@ function Show-WatcherToast {
     } catch { Log "Toast error: $($_.Exception.Message)" }
 }
 
-function Get-Snapshot {
+function Get-Snapshot([string]$src) {
     $map = @{}
-    if (Test-Path -LiteralPath $Source) {
-        Get-ChildItem -LiteralPath $Source -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
-            $rel = $_.FullName.Substring($Source.Length).TrimStart('\', '/')
+    if (Test-Path -LiteralPath $src) {
+        Get-ChildItem -LiteralPath $src -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+            $rel = $_.FullName.Substring($src.Length).TrimStart('\', '/')
             $map[$rel] = "$($_.Length):$($_.LastWriteTimeUtc.Ticks)"
         }
     }
     return $map
 }
 
-function Sync-Now {
-    param([string]$Reason)
+function Sync-One([string]$src, [string]$reason) {
+    $name = $sourceMap[$src]
+    $target = Join-Path $Destination $name
     try {
-        # keep previous version of files that are about to be overwritten
+        New-Item -ItemType Directory -Path $target -Force | Out-Null
         try {
             . (Join-Path $PSScriptRoot 'Versions.ps1')
-            $snap = New-VersionSnapshot -Source $Source -Destination $Destination -VersionsDir $VersionsDir
-            if ($snap) { Log "Saved previous version(s): $snap" }
-        } catch { Log "Version snapshot error: $($_.Exception.Message)" }
+            $snap = New-VersionSnapshot -Source $src -Destination $target -VersionsDir $VersionsDir
+            if ($snap) { Log "[$name] saved previous version(s)" }
+        } catch { Log "[$name] version snapshot error: $($_.Exception.Message)" }
 
-        $rbArgs = @($Source, $Destination, '/E', '/COPY:DAT', '/R:1', '/W:1',
+        $rbArgs = @($src, $target, '/E', '/COPY:DAT', '/R:1', '/W:1',
                     '/NP', '/NFL', '/NDL', "/LOG+:$logFile")
         & robocopy @rbArgs | Out-Null
         $code = $LASTEXITCODE
-        if ($code -ge 8) { Log "robocopy error ($code) after $Reason" }
-        else { Log "Synced after: $Reason (robocopy $code)" }
-    } catch {
-        Log "Sync error after ${Reason}: $($_.Exception.Message)"
-    }
+        if ($code -ge 8) { Log "[$name] robocopy error ($code) after $reason" }
+        else { Log "[$name] synced after $reason (robocopy $code)" }
+    } catch { Log "[$name] sync error: $($_.Exception.Message)" }
 }
 
-Log "=== WATCHER START (polling every ${PollSeconds}s) ==="
-Log "Source: $Source"
-Log "Destination: $Destination"
+Log "=== WATCHER START ($($Sources.Count) source(s), polling ${PollSeconds}s) ==="
+foreach ($s in $Sources) { Log "  $s -> $($sourceMap[$s])" }
 
-# Initial sync and baseline snapshot
-Sync-Now -Reason 'startup'
-$lastSnapshot = Get-Snapshot
-Log "Baseline: $($lastSnapshot.Count) file(s) in source. Waiting for changes..."
+$baseline = @{}
+foreach ($s in $Sources) {
+    Sync-One $s 'startup'
+    $baseline[$s] = Get-Snapshot $s
+}
+Log "Baseline ready. Waiting for changes..."
 
 $lastKeepalive = Get-Date
-
 try {
     while ($true) {
         Start-Sleep -Seconds $PollSeconds
-
-        if (-not (Test-Path -LiteralPath $Source)) {
-            if (((Get-Date) - $lastKeepalive).TotalMinutes -ge 5) {
-                Log "Source not accessible right now (will keep retrying)."
-                $lastKeepalive = Get-Date
+        $anyChanges = $false
+        foreach ($s in $Sources) {
+            if (-not (Test-Path -LiteralPath $s)) { continue }
+            $snapshot = Get-Snapshot $s
+            $old = $baseline[$s]
+            $changes = [System.Collections.Generic.List[string]]::new()
+            foreach ($key in $snapshot.Keys) {
+                if (-not $old.ContainsKey($key) -or $old[$key] -ne $snapshot[$key]) { [void]$changes.Add($key) }
             }
-            continue
+            foreach ($key in $old.Keys) {
+                if (-not $snapshot.ContainsKey($key)) { [void]$changes.Add($key) }
+            }
+            if ($changes.Count -gt 0) {
+                Log "[$($sourceMap[$s])] detected $($changes.Count) change(s)"
+                $changes | Select-Object -First 5 | ForEach-Object { Log "   $_" }
+                Sync-One $s 'file change'
+                $anyChanges = $true
+            }
+            $baseline[$s] = $snapshot
         }
-
-        $snapshot = Get-Snapshot
-        $changes = [System.Collections.Generic.List[string]]::new()
-        foreach ($key in $snapshot.Keys) {
-            if (-not $lastSnapshot.ContainsKey($key) -or $lastSnapshot[$key] -ne $snapshot[$key]) {
-                [void]$changes.Add($key)
-            }
-        }
-        # also detect files that DISAPPEARED from the source
-        foreach ($key in $lastSnapshot.Keys) {
-            if (-not $snapshot.ContainsKey($key)) {
-                [void]$changes.Add($key)
-            }
-        }
-
-        if ($changes.Count -gt 0) {
-            Log "Detected $($changes.Count) new/changed file(s):"
-            $changes | Select-Object -First 10 | ForEach-Object { Log "   $_" }
-            Sync-Now -Reason 'file change'
-            $lastSnapshot = $snapshot
-            Show-WatcherToast -Title 'Backuper: новые файлы' -Text "Изменения на сервере скопированы в резервную папку.`n$(Get-Date -Format 'HH:mm:ss')"
-        } else {
-            $lastSnapshot = $snapshot
-            if (((Get-Date) - $lastKeepalive).TotalMinutes -ge 10) {
-                Log "Alive. Source OK, $($snapshot.Count) file(s), no changes."
-                $lastKeepalive = Get-Date
-            }
+        if ($anyChanges) {
+            Show-WatcherToast -Title 'Backuper: новые файлы' -Text "Изменения скопированы.`n$(Get-Date -Format 'HH:mm:ss')"
+        } elseif (((Get-Date) - $lastKeepalive).TotalMinutes -ge 10) {
+            Log "Alive. No changes."
+            $lastKeepalive = Get-Date
         }
     }
 } finally {

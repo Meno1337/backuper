@@ -526,18 +526,33 @@ $xaml = @'
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Папка источника:" VerticalAlignment="Center"
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Папки источников:" VerticalAlignment="Center"
                                Foreground="#FFA9ADC1"/>
-                    <Grid Grid.Row="0" Grid.Column="1" Margin="0,4,0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox x:Name="TxtSource"/>
-                        <Button x:Name="BtnPickSource" Grid.Column="1" Content="📁  Выбрать..."
-                                Margin="8,0,0,0" Style="{StaticResource InfoButton}"
-                                ToolTip="Выбрать папку источника (сетевой путь можно ввести в диалоге)"/>
-                    </Grid>
+                    <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,4,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtSource"/>
+                            <Button x:Name="BtnPickSource" Grid.Column="1" Content="📁  Выбрать..."
+                                    Margin="8,0,0,0" Style="{StaticResource InfoButton}"
+                                    ToolTip="Выбрать основную папку источника"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <ListBox x:Name="SourceList" Height="66" MinWidth="300" MaxWidth="520"
+                                     Background="#FF181825" BorderBrush="#FF45475A" BorderThickness="1"
+                                     Foreground="#FFCDD6F4" FontSize="12"/>
+                            <StackPanel Margin="8,0,0,0">
+                                <Button x:Name="BtnAddSource" Content="＋  Добавить папку" Width="150"
+                                        Style="{StaticResource InfoButton}" Margin="0,0,0,4"/>
+                                <Button x:Name="BtnRemoveSource" Content="－  Удалить" Width="150"
+                                        Style="{StaticResource DangerButton}"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="Каждая папка копируется в отдельную подпапку в Files."
+                                   FontSize="11" Foreground="#FF6C7086" Margin="0,4,0,0"/>
+                    </StackPanel>
 
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Папка копии:" VerticalAlignment="Center"
                                Foreground="#FFA9ADC1"/>
@@ -663,6 +678,9 @@ $btnRestoreVersionToServer = Find 'BtnRestoreVersionToServer'
 $btnOpenVersions  = Find 'BtnOpenVersions'
 $btnCleanVersions = Find 'BtnCleanVersions'
 $btnDeleteSnapshot = Find 'BtnDeleteSnapshot'
+$sourceList       = Find 'SourceList'
+$btnAddSource     = Find 'BtnAddSource'
+$btnRemoveSource  = Find 'BtnRemoveSource'
 $txtSource        = Find 'TxtSource'
 $txtDest          = Find 'TxtDest'
 $txtLogs          = Find 'TxtLogs'
@@ -685,6 +703,23 @@ $logBox           = Find 'LogBox'
 $logScroll        = Find 'LogScroll'
 
 # ---------- Helpers ----------
+function Get-SourceFolderName([string]$path) {
+    $name = ($path.TrimEnd('\', '/') -split '[\\/]')[-1]
+    if (-not $name) { $name = 'source' }
+    return ($name -replace '[<>:"|?*]', '_')
+}
+
+function Get-SourcePaths {
+    $paths = [System.Collections.Generic.List[string]]::new()
+    if ($txtSource.Text) { [void]$paths.Add($txtSource.Text) }
+    foreach ($item in $sourceList.Items) {
+        $p = [string]$item
+        if ($p -and -not $paths.Contains($p)) { [void]$paths.Add($p) }
+    }
+    if ($paths.Count -eq 0) { [void]$paths.Add($DefaultSettings.Source) }
+    return $paths.ToArray()
+}
+
 function Set-Status {
     param([string]$Text, [string]$Color = '#FFA6E3A1')
     $statusText.Text = $Text
@@ -699,16 +734,22 @@ function Append-Log {
 
 function Get-MissingFiles {
     param([string]$Src, [string]$Dst)
-    if (-not (Test-Path -LiteralPath $Src)) { return @() }
-    $sourceSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    Get-ChildItem -LiteralPath $Src -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
-        [void]$sourceSet.Add($_.FullName.Substring($Src.Length).TrimStart('\', '/'))
-    }
     $res = [System.Collections.Generic.List[string]]::new()
-    if (Test-Path -LiteralPath $Dst) {
-        Get-ChildItem -LiteralPath $Dst -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
-            $rel = $_.FullName.Substring($Dst.Length).TrimStart('\', '/')
-            if (-not $sourceSet.Contains($rel)) { [void]$res.Add($rel) }
+    $used = @{}
+    foreach ($s in @(Get-SourcePaths)) {
+        $name = Get-SourceFolderName $s
+        if ($used.ContainsKey($name)) { $used[$name]++; $name = "$name-$($used[$name])" } else { $used[$name] = 1 }
+        $target = Join-Path $Dst $name
+        if (-not (Test-Path -LiteralPath $s)) { continue }
+        $sourceSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        Get-ChildItem -LiteralPath $s -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+            [void]$sourceSet.Add($_.FullName.Substring($s.Length).TrimStart('\', '/'))
+        }
+        if (Test-Path -LiteralPath $target) {
+            Get-ChildItem -LiteralPath $target -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                $rel = $_.FullName.Substring($target.Length).TrimStart('\', '/')
+                if (-not $sourceSet.Contains($rel)) { [void]$res.Add("$name\$rel") }
+            }
         }
     }
     return $res.ToArray()
@@ -818,6 +859,28 @@ function Select-Folder {
 }
 
 # ---------- Events ----------
+$btnAddSource.Add_Click({
+    $p = Select-Folder -Title 'Добавить ещё одну папку источника' -Initial ''
+    if (-not $p) { return }
+    $existing = @(Get-SourcePaths)
+    if ($existing -contains $p) {
+        [System.Windows.MessageBox]::Show('Эта папка уже добавлена.', 'Backuper', 'OK', 'Information')
+        return
+    }
+    [void]$sourceList.Items.Add($p)
+    Append-Log "Добавлена папка источника: $p"
+})
+
+$btnRemoveSource.Add_Click({
+    $sel = $sourceList.SelectedItem
+    if (-not $sel) {
+        [System.Windows.MessageBox]::Show('Выберите папку в списке.', 'Backuper', 'OK', 'Information')
+        return
+    }
+    [void]$sourceList.Items.Remove($sel)
+    Append-Log "Удалена папка источника: $sel"
+})
+
 $btnPickSource.Add_Click({
     $p = Select-Folder -Title 'Выберите папку источника (сетевой путь можно вставить в диалоге)' -Initial $txtSource.Text
     if ($p) {
@@ -868,8 +931,11 @@ $btnBackup.Add_Click({
         $window.Dispatcher.Invoke([Action]{}, 'Normal')
 
         # synchronous call: no background job, so a failure can never kill the window
-        $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $BackupCore `
-            -Source $txtSource.Text -Destination $txtDest.Text -LogDir $txtLogs.Text 2>&1 | Out-String
+        $paths = @(Get-SourcePaths)
+        $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BackupCore,
+                     '-Destination', $txtDest.Text, '-LogDir', $txtLogs.Text,
+                     '-Sources', ($paths -join '|'))
+        $out = & powershell.exe @argList 2>&1 | Out-String
 
         $r = $out | ConvertFrom-Json
         foreach ($m in $r.Messages) { Append-Log $m }
@@ -900,8 +966,15 @@ $btnRestoreSelected.Add_Click({
             'OK', 'Information')
         return
     }
+    # $sel looks like "FolderName\relative\path" - map back to the right source
+    $parts = $sel -split '[\\/]', 2
+    $folderName = $parts[0]
+    $relPath = if ($parts.Count -gt 1) { $parts[1] } else { '' }
     $src = $txtSource.Text
-    $target = Join-Path $src $sel
+    foreach ($s in @(Get-SourcePaths)) {
+        if ((Get-SourceFolderName $s) -eq $folderName) { $src = $s; break }
+    }
+    $target = if ($relPath) { Join-Path $src $relPath } else { $src }
     $msg = "Восстановить файл на сервере?`n`n$sel`n`n→ $target"
     $res = [System.Windows.MessageBox]::Show($msg, 'Подтверждение восстановления',
         'YesNo', 'Question')
@@ -1052,6 +1125,7 @@ $btnDeleteSnapshot.Add_Click({
 
 $btnSaveSettings.Add_Click({
     $settings.Source      = $txtSource.Text
+    $settings.Sources     = @(Get-SourcePaths)
     $settings.Destination = $txtDest.Text
     $settings.LogDir      = $txtLogs.Text
     $settings.IntervalHours = [int]$txtInterval.Text
@@ -1075,7 +1149,9 @@ $btnInstallTask.Add_Click({
     try {
         $dir = $BaseDir
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-            -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$dir\Backup.ps1`" -Source `"$($txtSource.Text)`" -Destination `"$($txtDest.Text)`" -LogDir `"$($txtLogs.Text)`" -LogRetentionDays $days -VersionsDir `"$vdir`"" `
+            -Argument ("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$dir\Backup.ps1`" " +
+                "-Sources `"" + ((@(Get-SourcePaths)) -join '|') + "`" " +
+                " -Destination `"$($txtDest.Text)`" -LogDir `"$($txtLogs.Text)`" -LogRetentionDays $days -VersionsDir `"$vdir`"") `
             -WorkingDirectory $dir
         $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddHours($hours)) `
             -RepetitionInterval (New-TimeSpan -Hours $hours) -RepetitionDuration (New-TimeSpan -Days 3650)
@@ -1125,7 +1201,13 @@ $btnInstallTask.Add_Click({
 })
 
 # ---------- Init ----------
-$txtSource.Text = $settings.Source
+$sourceList.Items.Clear()
+if ($settings.Sources -and $settings.Sources.Count -gt 1) {
+    $txtSource.Text = $settings.Sources[0]
+    foreach ($s in ($settings.Sources | Select-Object -Skip 1)) { [void]$sourceList.Items.Add([string]$s) }
+} else {
+    $txtSource.Text = $settings.Source
+}
 $txtDest.Text   = $settings.Destination
 $txtLogs.Text   = $settings.LogDir
 $txtVersionsDir.Text = $settings.VersionsDir

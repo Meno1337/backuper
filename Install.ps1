@@ -107,6 +107,7 @@ New-Item -ItemType Directory -Path (Join-Path $installDir 'Versions') -Force | O
 # --- 5. settings.json ---
 $settings = [PSCustomObject]@{
     Source               = $sourceFolder
+    Sources              = @($sourceFolder)
     Destination          = Join-Path $installDir 'Files'
     LogDir               = Join-Path $installDir 'Logs'
     AutoRunEnabled       = $true
@@ -116,11 +117,14 @@ $settings = [PSCustomObject]@{
     VersionRetentionDays = 30
 }
 $settings | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $installDir 'settings.json') -Encoding UTF8
+$sourceArgs = if ($settings.Sources -and $settings.Sources.Count -gt 0) {
+    '-Sources "' + ($settings.Sources -join '|') + '"'
+} else { '-Source "' + $settings.Source + '"' }
 Live '[PROGRESS:50] Настройки созданы'
 
 # --- 6. scheduled tasks ---
 $a = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Backup.ps1`" -Source `"$($settings.Source)`" -Destination `"$installDir\Files`" -LogDir `"$installDir\Logs`" -LogRetentionDays 7 -VersionsDir `"$installDir\Versions`"" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Backup.ps1`" $sourceArgs -Destination `"$installDir\Files`" -LogDir `"$installDir\Logs`" -LogRetentionDays 7 -VersionsDir `"$installDir\Versions`"" `
     -WorkingDirectory $installDir
 $t1 = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddHours(2)) `
     -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Days 3650)
@@ -132,7 +136,7 @@ Register-ScheduledTask -TaskName 'BackuperHourly' -Action $a -Trigger @($t1, $t2
     -Description 'Backuper: копирование каждые 2 часа + уведомления' | Out-Null
 
 $aw = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Watcher.ps1`" -Source `"$($settings.Source)`" -Destination `"$installDir\Files`" -LogDir `"$installDir\Logs`" -VersionsDir `"$installDir\Versions`"" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Watcher.ps1`" $sourceArgs -Destination `"$installDir\Files`" -LogDir `"$installDir\Logs`" -VersionsDir `"$installDir\Versions`"" `
     -WorkingDirectory $installDir
 $tw = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $sw = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
@@ -180,7 +184,7 @@ Live '[PROGRESS:80] Задачи планировщика зарегистрир
 $uninstallKey = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper'
 New-Item -Path $uninstallKey -Force | Out-Null
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayName' -Value 'Backuper' -Force
-Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.2.0' -Force
+Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.3.0' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'Publisher' -Value 'Backuper' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayIcon' -Value (Join-Path $installDir 'app_icon_v2.ico') -Force
 Set-ItemProperty -Path $uninstallKey -Name 'UninstallString' -Value ('"' + (Join-Path $installDir 'BackuperUninstaller.exe') + '"') -Force
@@ -210,5 +214,6 @@ Write-Host "Программа установлена в: $installDir"
 Write-Host "Источник: $sourceFolder"
 Write-Host 'Задачи планировщика зарегистрированы.'
 if (-not $Silent) { Read-Host 'Нажмите Enter для выхода' }
+
 
 
