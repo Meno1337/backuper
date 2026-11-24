@@ -41,7 +41,7 @@ $body = @{
     name       = "Backuper $ver"
     body       = $notes
     draft      = $false
-    prerelease = $false
+    prerelease = ($ver -match 'beta')
 } | ConvertTo-Json -Depth 4
 
 $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)

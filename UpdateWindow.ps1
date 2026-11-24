@@ -165,10 +165,35 @@ $timer.Add_Tick({
     if (-not $p.HasExited) { return }
     $timer.Stop()
     $final = Get-Content -LiteralPath $live -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+    $updated = $false
+    if ($final -and $final -match 'установлено') { $updated = $true }
     if ($final -and $final -match 'установлено|актуальная|не настроено|Ошибка|Не удалось') {
         $bar.Value = 100
         $statusText.Text = 'Завершено'
     }
+
+    if ($updated) {
+        # restart the main panel automatically after a successful update
+        $statusText.Text = 'Перезапуск панели...'
+        Append-Log 'Обновление установлено. Перезапуск панели...'
+        $me = $PID
+        $old = @(Get-CimInstance Win32_Process -Filter "name='powershell.exe'" | Where-Object {
+            $_.ProcessId -ne $me -and $_.CommandLine -like '*BackuperGUI.ps1*'
+        })
+        foreach ($op in $old) { Stop-Process -Id $op.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Milliseconds 700
+        $startScript = Join-Path $InstallDir 'BackuperStart.ps1'
+        if (-not (Test-Path -LiteralPath $startScript)) { $startScript = Join-Path $InstallDir 'BackuperGUI.ps1' }
+        if (Test-Path -LiteralPath $startScript) {
+            Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(
+                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
+                '-File', $startScript
+            )
+            Append-Log 'Панель перезапущена.'
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
     $btnDone.IsEnabled = $true
     $script:proc = $null
     if ($AutoClose) { $window.Close() }

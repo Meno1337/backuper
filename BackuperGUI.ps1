@@ -50,6 +50,7 @@ $DefaultSettings = [PSCustomObject]@{
     VersionsDir       = 'C:\Users\karpovD\Desktop\backuper\Versions'
     VersionRetentionDays = 30
     AutoUpdateEnabled    = $true
+    CompressEnabled      = $false
 }
 
 function Load-Settings {
@@ -481,17 +482,24 @@ $xaml = @'
                 <Grid Margin="0,12,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Text="Файлы, которые есть в копии, но ОТСУТСТВУЮТ на сервере. Список обновляется автоматически каждые 5 секунд."
                                Foreground="#FFA9ADC1" Margin="0,0,0,10" TextWrapping="Wrap"/>
-                    <Border Grid.Row="1" Background="#FF181825" CornerRadius="8" Padding="8">
+                    <Grid Grid.Row="1" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="Поиск:" Foreground="#FFA9ADC1" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox x:Name="TxtRestoreSearch" Grid.Column="1" Height="28"
+                                 ToolTip="Фильтр по названию файла"/>
+                    </Grid>
+                    <Border Grid.Row="2" Background="#FF181825" CornerRadius="8" Padding="8">
                         <ListBox x:Name="MissingList" Background="#FF181825" BorderBrush="#FF45475A"
                                  BorderThickness="1" Foreground="#FFCDD6F4" FontSize="13" SelectionMode="Extended"
                                  ToolTip="Можно выбрать несколько файлов: Ctrl+клик или Shift+клик"/>
                     </Border>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
                         <Button x:Name="BtnRestoreSelected" Content="↩  Восстановить выбранный файл" Width="240"
                                 Margin="0,0,10,0" Style="{StaticResource PrimaryButton}"/>
                         <Button x:Name="BtnRefreshMissing" Content="⟳  Обновить список" Width="170"
@@ -508,12 +516,19 @@ $xaml = @'
                 <Grid Margin="0,12,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Снимки изменений. Раскройте дату:  + добавлен/изменён,  − удалён с сервера (время указано рядом). Отметьте чекбоксами несколько строк для пакетного восстановления. Список обновляется каждые 5 секунд."
+                    <TextBlock Grid.Row="0" Text="Снимки изменений. Раскройте дату:  + добавлен/изменён,  − удалён с сервера. Отметьте чекбоксами несколько строк для пакетного восстановления."
                                Foreground="#FFA9ADC1" Margin="0,0,0,10" TextWrapping="Wrap"/>
-                    <Border Grid.Row="1" Background="#FF181825" CornerRadius="8" Padding="6">
+                    <Grid Grid.Row="1" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="Поиск:" Foreground="#FFA9ADC1" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox x:Name="TxtVersionSearch" Grid.Column="1" Height="28"
+                                 ToolTip="Фильтр по названию файла"/>
+                    </Grid>
+                    <Border Grid.Row="2" Background="#FF181825" CornerRadius="8" Padding="6">
                         <TreeView x:Name="VersionTree" Background="#FF181825" BorderBrush="#FF45475A"
                                   BorderThickness="1" Foreground="#FFCDD6F4" FontSize="12">
                             <TreeView.ItemContainerStyle>
@@ -523,7 +538,7 @@ $xaml = @'
                             </TreeView.ItemContainerStyle>
                         </TreeView>
                     </Border>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0">
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
                         <Button x:Name="BtnRestoreVersionToBackup" Content="↩  В копию" Width="140" Margin="0,0,8,0"
                                 Style="{StaticResource PrimaryButton}"/>
                         <Button x:Name="BtnRestoreVersionToServer" Content="↩  На сервер" Width="145" Margin="0,0,8,0"
@@ -584,6 +599,12 @@ $xaml = @'
                         </StackPanel>
                         <TextBlock x:Name="SourceSizes" Text="Размер папок: вычисление..."
                                    FontSize="11" Foreground="#FF89B4FA" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <CheckBox x:Name="ChkCompress" Foreground="#FFCDD6F4" FontSize="11"
+                                      Content=" Сжимать копии (NTFS) — экономит место на диске"/>
+                            <Button x:Name="BtnCompressNow" Content="Сжать сейчас" Width="110" Margin="12,0,0,0"
+                                    FontSize="10" Padding="6,3" Style="{StaticResource InfoButton}"/>
+                        </StackPanel>
                         <TextBlock Text="Каждая папка копируется в отдельную подпапку в Files."
                                    FontSize="11" Foreground="#FF6C7086" Margin="0,4,0,0"/>
                     </StackPanel>
@@ -735,6 +756,10 @@ $statMissing      = Find 'StatMissing'
 $statLast         = Find 'StatLast'
 $fileList         = Find 'FileList'
 $missingList      = Find 'MissingList'
+$txtRestoreSearch = Find 'TxtRestoreSearch'
+$txtVersionSearch = Find 'TxtVersionSearch'
+$chkCompress      = Find 'ChkCompress'
+$btnCompressNow   = Find 'BtnCompressNow'
 $versionTree      = Find 'VersionTree'
 $tabRestore       = Find 'TabRestore'
 $tabVersions      = Find 'TabVersions'
@@ -762,6 +787,17 @@ function Get-SourcePaths {
     return $paths.ToArray()
 }
 
+function Apply-RestoreSearch {
+    $q = $txtRestoreSearch.Text.Trim()
+    $items = if ($q) { @($script:allMissing | Where-Object { $_ -like "*$q*" }) } else { @($script:allMissing) }
+    $missingList.Items.Clear()
+    foreach ($m in $items) { [void]$missingList.Items.Add($m) }
+    $statMissing.Text = "$($items.Count)$(if ($q) { " / $($script:allMissing.Count)" })"
+}
+
+$txtRestoreSearch.Add_TextChanged({ Apply-RestoreSearch })
+$txtVersionSearch.Add_TextChanged({ Refresh-Versions })
+
 $script:sizeJob = $null
 function Format-Size([double]$Bytes) {
     if ($Bytes -ge 1GB) { return ([math]::Round($Bytes / 1GB, 2)).ToString().Replace('.', ',') + ' ГБ' }
@@ -772,20 +808,43 @@ function Format-Size([double]$Bytes) {
 
 function Update-SourceSizes {
     $paths = @(Get-SourcePaths)
+    $used = @{}
+    $pairs = [System.Collections.Generic.List[string]]::new()
+    foreach ($s in $paths) {
+        $n = Get-SourceFolderName $s
+        if ($used.ContainsKey($n)) { $used[$n]++; $n = "$n-$($used[$n])" } else { $used[$n] = 1 }
+        [void]$pairs.Add("$n|$(Join-Path $txtDest.Text $n)")
+    }
     $sourceSizes.Text = 'Размер папок: вычисление...'
     if ($script:sizeJob -and $script:sizeJob.State -eq 'Running') { return }
     try {
         $script:sizeJob = Start-Job -ScriptBlock {
-            param([string[]]$srcs)
+            param([string[]]$folderPairs)
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class CompSize {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint GetCompressedFileSizeW(string path, out uint high);
+}
+'@
             $lines = [System.Collections.Generic.List[string]]::new()
-            foreach ($s in $srcs) {
-                $stats = Get-ChildItem -LiteralPath $s -File -Recurse -Force -ErrorAction SilentlyContinue |
-                         Measure-Object -Property Length -Sum
-                $name = ($s.TrimEnd('\', '/') -split '[\\/]')[-1]
-                [void]$lines.Add("$name|$($stats.Count)|$($stats.Sum)")
+            foreach ($pair in $folderPairs) {
+                $p = $pair -split '\|', 2
+                $name = $p[0]; $path = $p[1]
+                $count = 0; $logical = 0.0; $compressed = 0.0
+                Get-ChildItem -LiteralPath $path -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                    $count++
+                    $logical += $_.Length
+                    $hi = [uint32]0
+                    $lo = [CompSize]::GetCompressedFileSizeW($_.FullName, [ref]$hi)
+                    if ($lo -eq 0xFFFFFFFF -and $hi -eq 0xFFFFFFFF) { $compressed += $_.Length }
+                    else { $compressed += ([int64]$hi * 4294967296 + $lo) }
+                }
+                [void]$lines.Add("$name|$count|$logical|$compressed")
             }
             return $lines.ToArray()
-        } -ArgumentList (, $paths)
+        } -ArgumentList (, $pairs.ToArray())
     } catch { $sourceSizes.Text = 'Размер папок: недоступно' }
 }
 
@@ -796,17 +855,22 @@ $sizeTimer.Add_Tick({
     if (-not $j -or $j.State -eq 'Running') { return }
     try {
         $lines = @(Receive-Job $j)
-        $totalCount = 0; $totalBytes = 0.0
+        $totalCount = 0; $totalBytes = 0.0; $totalComp = 0.0
         $parts = [System.Collections.Generic.List[string]]::new()
         foreach ($line in $lines) {
-            $p = [string]$line -split '\|', 3
-            if ($p.Count -lt 3) { continue }
-            $cnt = [int]$p[1]; $bytes = [double]$p[2]
-            $totalCount += $cnt; $totalBytes += $bytes
-            [void]$parts.Add("$($p[0]): $cnt файл., $(Format-Size $bytes)")
+            $p = [string]$line -split '\|', 4
+            if ($p.Count -lt 4) { continue }
+            $cnt = [int]$p[1]; $bytes = [double]$p[2]; $comp = [double]$p[3]
+            $totalCount += $cnt; $totalBytes += $bytes; $totalComp += $comp
+            $ratio = if ($bytes -gt 0) { [int](100 * (1 - $comp / $bytes)) } else { 0 }
+            $note = if ($ratio -gt 0) { " → $(Format-Size $comp) (−$ratio%)" } else { ' (без сжатия)' }
+            [void]$parts.Add("$($p[0]): $cnt файл., $(Format-Size $bytes)$note")
         }
         if ($parts.Count -gt 0) {
-            $sourceSizes.Text = 'Размер папок: ' + ($parts -join '  •  ') + "  |  ВСЕГО: $totalCount файл., $(Format-Size $totalBytes)"
+            $allRatio = if ($totalBytes -gt 0) { [int](100 * (1 - $totalComp / $totalBytes)) } else { 0 }
+            $allNote = if ($allRatio -gt 0) { " → $(Format-Size $totalComp) (−$allRatio%)" } else { '' }
+            $sourceSizes.Text = 'Размер папок: ' + ($parts -join '  •  ') +
+                "  |  ВСЕГО: $totalCount файл., $(Format-Size $totalBytes)$allNote"
         } else { $sourceSizes.Text = 'Размер папок: недоступно' }
     } catch { $sourceSizes.Text = 'Размер папок: недоступно' }
     try { Remove-Job $j -Force -ErrorAction SilentlyContinue } catch { }
@@ -868,10 +932,8 @@ function Refresh-Dashboard {
     $fileList.ItemsSource = $items
     $statFiles.Text = $n
 
-    $missing = @(Get-MissingFiles -Src $txtSource.Text -Dst $dst)
-    $statMissing.Text = $missing.Count
-    $missingList.Items.Clear()
-    foreach ($m in $missing) { [void]$missingList.Items.Add($m) }
+    $script:allMissing = @(Get-MissingFiles -Src $txtSource.Text -Dst $dst)
+    Apply-RestoreSearch
 
     # last backup time from newest log file
     $last = 'never'
@@ -914,12 +976,15 @@ function Refresh-Versions {
     }
 
     $first = $true
+    $vq = $txtVersionSearch.Text.Trim()
     foreach ($s in $snaps) {
+        $visibleChanges = if ($vq) { @($s.Changes | Where-Object { $_.Name -like "*$vq*" }) } else { @($s.Changes) }
+        if ($vq -and $visibleChanges.Count -eq 0) { continue }
         $node = New-Object System.Windows.Controls.TreeViewItem
         $node.Header = "$($s.When.ToString('dd.MM.yyyy HH:mm'))   $($s.Name)"
         $node.Tag = [PSCustomObject]@{ SnapshotPath = $s.Path; IsSnapshot = $true }
         $node.IsExpanded = ($first -or $expanded.ContainsKey($s.Path))
-        foreach ($c in $s.Changes) {
+        foreach ($c in $visibleChanges) {
             $child = New-Object System.Windows.Controls.TreeViewItem
             $tag = [PSCustomObject]@{
                 SnapshotPath = $s.Path
@@ -1087,6 +1152,34 @@ $btnCopyLogs.Add_Click({
     } catch {
         [System.Windows.MessageBox]::Show("Не удалось скопировать логи: $($_.Exception.Message)", 'Ошибка', 'OK', 'Error')
     }
+})
+
+$script:compressJob = $null
+$compressTimer = New-Object System.Windows.Threading.DispatcherTimer
+$compressTimer.Interval = [TimeSpan]::FromSeconds(2)
+$compressTimer.Add_Tick({
+    $j = $script:compressJob
+    if (-not $j -or $j.State -eq 'Running') { return }
+    $compressTimer.Stop()
+    try { $out = Receive-Job $j } catch { $out = '' }
+    try { Remove-Job $j -Force -ErrorAction SilentlyContinue } catch { }
+    $script:compressJob = $null
+    Append-Log "Сжатие завершено."
+    Update-SourceSizes
+})
+
+$btnCompressNow.Add_Click({
+    $btnCompressNow.IsEnabled = $false
+    Append-Log 'Сжатие копий запущено (NTFS)...'
+    $script:compressJob = Start-Job -ScriptBlock {
+        param([string]$dest)
+        $compact = "$env:WINDIR\System32\compact.exe"
+        if (Test-Path -LiteralPath $compact) {
+            & $compact /c /s /i "$dest" 2>&1 | Out-Null
+        }
+    } -ArgumentList $txtDest.Text
+    $compressTimer.Start()
+    $btnCompressNow.IsEnabled = $true
 })
 
 $btnRefreshMissing.Add_Click({ Refresh-Dashboard })
@@ -1292,6 +1385,7 @@ $btnSaveSettings.Add_Click({
     $settings.VersionRetentionDays = [int]$txtVersionDays.Text
     $settings.AutoRunEnabled = [bool]$chkAuto.IsChecked
     $settings.AutoUpdateEnabled = [bool]$chkAutoUpdate.IsChecked
+    $settings.CompressEnabled = [bool]$chkCompress.IsChecked
     Save-Settings $settings
     Append-Log 'Настройки сохранены.'
     Set-Status 'Настройки сохранены' '#FFA6E3A1'
@@ -1387,6 +1481,7 @@ $txtLogDays.Text = $settings.LogRetentionDays
 $txtVersionDays.Text = $settings.VersionRetentionDays
 $chkAuto.IsChecked = $settings.AutoRunEnabled
 $chkAutoUpdate.IsChecked = [bool]$settings.AutoUpdateEnabled
+$chkCompress.IsChecked = [bool]$settings.CompressEnabled
 $mainTabs.Add_SelectionChanged({ if ($mainTabs.SelectedItem -eq $tabSettings) { Update-SourceSizes } })
 Update-SourceSizes
 
