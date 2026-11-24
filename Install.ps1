@@ -83,6 +83,7 @@ $files = @(
     'Versions.ps1', 'FolderPicker.ps1', 'CleanLogs.ps1', 'Restore.ps1',
     'Update.ps1', 'version.json', 'app_icon_v2.ico', 'Backuper.exe',
     'BackuperInstaller.exe', 'InstallerGUI.ps1', 'Launcher.cs', 'InstallerLauncher.cs',
+    'BackuperStart.ps1',
     'BackuperUninstaller.exe', 'Uninstall.ps1', 'UninstallerGUI.ps1', 'UninstallerLauncher.cs',
     'MakeIcon.ps1', 'MakeShortcut.ps1', 'ИНСТРУКЦИЯ.md',
     'Открыть панель управления.cmd'
@@ -149,6 +150,16 @@ Unregister-ScheduledTask -TaskName 'BackuperLogCleanup' -Confirm:$false -ErrorAc
 Register-ScheduledTask -TaskName 'BackuperLogCleanup' -Action $ca -Trigger $ct -Settings $cs -Principal $cp `
     -Description 'Backuper: еженедельная очистка логов и версий' | Out-Null
 
+# panel starts with Windows (straight into the tray)
+$startAction = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\BackuperStart.ps1`"" `
+    -WorkingDirectory $installDir
+$startTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$startSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+Unregister-ScheduledTask -TaskName 'BackuperStartup' -Confirm:$false -ErrorAction SilentlyContinue
+Register-ScheduledTask -TaskName 'BackuperStartup' -Action $startAction -Trigger $startTrigger `
+    -Settings $startSettings -Principal $pr -Description 'Backuper: запуск панели при входе в Windows' | Out-Null
+
 # --- 7. shortcut ---
 if ($makeShortcut) {
     $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Backuper.lnk'
@@ -168,7 +179,7 @@ Live '[PROGRESS:80] Задачи планировщика зарегистрир
 $uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper'
 New-Item -Path $uninstallKey -Force | Out-Null
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayName' -Value 'Backuper' -Force
-Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.1.0' -Force
+Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.2.0' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'Publisher' -Value 'Backuper' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayIcon' -Value (Join-Path $installDir 'app_icon_v2.ico') -Force
 Set-ItemProperty -Path $uninstallKey -Name 'UninstallString' -Value ('"' + (Join-Path $installDir 'BackuperUninstaller.exe') + '"') -Force

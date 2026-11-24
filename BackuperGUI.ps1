@@ -5,6 +5,10 @@
     powershell.exe -ExecutionPolicy Bypass -File BackuperGUI.ps1
 #>
 
+param(
+    [switch]$Minimized
+)
+
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
@@ -1089,6 +1093,16 @@ $btnInstallTask.Add_Click({
         Register-ScheduledTask -TaskName 'BackuperLogCleanup' -Action $cleanAction -Trigger $weekly `
             -Settings $cleanSettings -Principal $cleanPrincipal -Description 'Backuper: weekly log cleanup' | Out-Null
 
+        # panel autorun at logon (straight into tray)
+        $startAction = New-ScheduledTaskAction -Execute 'powershell.exe' `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$dir\BackuperStart.ps1`"" `
+            -WorkingDirectory $dir
+        $startTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+        $startSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+        Unregister-ScheduledTask -TaskName 'BackuperStartup' -Confirm:$false -ErrorAction SilentlyContinue
+        Register-ScheduledTask -TaskName 'BackuperStartup' -Action $startAction -Trigger $startTrigger `
+            -Settings $startSettings -Principal $principal -Description 'Backuper: панель при входе в Windows' | Out-Null
+
         Append-Log "Задача установлена: копирование каждые $hours ч. + при входе. Логи: $days дн., версии: $vdays дн., очистка по воскресеньям. Слежение перезапущено."
         [System.Windows.MessageBox]::Show("Задача установлена.`nКопирование каждые $hours ч.`nЛоги старше $days дн. и версии старше $vdays дн. удаляются по воскресеньям.",
             'Backuper', 'OK', 'Information')
@@ -1256,6 +1270,7 @@ $window.add_Closing({
 # Show() + our own dispatcher loop: hiding the window must NOT end the process,
 # otherwise the tray icon disappears.
 $window.Show()
+if ($Minimized) { $window.WindowState = [System.Windows.WindowState]::Minimized }
 try {
     # make sure the window is fully visible on the primary screen
     $workArea = [System.Windows.SystemParameters]::WorkArea

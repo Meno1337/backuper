@@ -39,7 +39,7 @@ Get-CimInstance Win32_Process -Filter "name='powershell.exe'" | Where-Object {
     ($_.CommandLine -like '*BackuperGUI.ps1*' -or $_.CommandLine -like '*Watcher.ps1*')
 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-foreach ($t in @('BackuperHourly', 'BackuperWatcher', 'BackuperLogCleanup')) {
+foreach ($t in @('BackuperHourly', 'BackuperWatcher', 'BackuperLogCleanup', 'BackuperStartup')) {
     Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
 }
 Live '[PROGRESS:25] Задачи удалены'
