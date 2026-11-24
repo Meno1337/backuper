@@ -8,6 +8,15 @@ Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class BackuperSetupAppId {
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+}
+'@
+[void][BackuperSetupAppId]::SetCurrentProcessExplicitAppUserModelID('Backuper.App.Setup')
 
 $ErrorActionPreference = 'Stop'
 $BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path

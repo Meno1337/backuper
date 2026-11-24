@@ -11,6 +11,18 @@ Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# Give this process its own AppUserModelID so Windows shows OUR icon in the
+# taskbar instead of the powershell.exe icon.
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class BackuperAppId {
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+}
+'@
+[void][BackuperAppId]::SetCurrentProcessExplicitAppUserModelID('Backuper.App.Main')
+
 $ErrorActionPreference = 'Stop'
 $BaseDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackupCore   = Join-Path $BaseDir 'BackupCore.ps1'
