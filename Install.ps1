@@ -168,7 +168,7 @@ Live '[PROGRESS:80] Задачи планировщика зарегистрир
 $uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper'
 New-Item -Path $uninstallKey -Force | Out-Null
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayName' -Value 'Backuper' -Force
-Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.0.0' -Force
+Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.1.0' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'Publisher' -Value 'Backuper' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayIcon' -Value (Join-Path $installDir 'app_icon_v2.ico') -Force
 Set-ItemProperty -Path $uninstallKey -Name 'UninstallString' -Value ('"' + (Join-Path $installDir 'BackuperUninstaller.exe') + '"') -Force

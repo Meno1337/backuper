@@ -2,10 +2,10 @@
 
 ![Backuper](app_icon.png)
 
-[![Latest release](https://img.shields.io/github/v/release/Meno1337/backuper?label=version)](../../releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Meno1337/backuper/total)](../../releases)
-[![Windows](https://img.shields.io/badge/Windows-10%2F11-blue)](../../releases/latest)
-[![PowerShell 5.1](https://img.shields.io/badge/PowerShell-5.1-blue)](../../releases/latest)
+[![version](docs/badge-version.svg)](../../releases/latest)
+[![Windows](docs/badge-windows.svg)](../../releases/latest)
+[![PowerShell](docs/badge-powershell.svg)](../../releases/latest)
+[📥 Скачать установщик](../../releases/latest)
 
 **Надёжное резервное копирование сетевой папки на локальный компьютер.**
 
