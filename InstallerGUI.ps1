@@ -355,6 +355,12 @@ $btnWindowClose.Add_Click({ $window.Close() })
 
 $repoText.Text = "Источник обновлений: $repoUrl`nТекущая версия: $currentVersion"
 Append-Log "Backuper Setup готов. $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+$dlLog = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_download.log'
+if (Test-Path -LiteralPath $dlLog) {
+    foreach ($line in (Get-Content -LiteralPath $dlLog -Encoding UTF8 -ErrorAction SilentlyContinue)) {
+        if ($line) { Append-Log "СКАЧИВАНИЕ: $line" }
+    }
+}
 
 $btnPickSource.Add_Click({
     if (Get-Command Select-ModernFolder -ErrorAction SilentlyContinue) {
@@ -424,7 +430,7 @@ $btnInstall.Add_Click({
             ' -InstallDir "' + $txtInstall.Text + '"' +
             ' -SourceDir "' + $BaseDir + '"' +
             ' -Silent'
-    if (-not $chkShortcut.IsChecked) { $args += ' -NoShortcut' }
+    if ($chkShortcut.IsChecked) { $args += ' -CreateShortcut' } else { $args += ' -NoShortcut' }
     $out = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_output.txt'
     $err = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_error.txt'
     Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue
@@ -432,6 +438,7 @@ $btnInstall.Add_Click({
         -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden
     $script:installOut = $out
     $script:installErr = $err
+    $script:installLive = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_live.log'
     $script:installLastLen = 0
     $installProgress.Value = 0
     $progressText.Text = 'Установка выполняется...'
@@ -442,7 +449,7 @@ $btnInstall.Add_Click({
         $script:installTimer.Add_Tick({
             $p = $script:installProc
             if (-not $p) { return }
-            $text = Get-Content -LiteralPath $script:installOut -Raw -ErrorAction SilentlyContinue
+            $text = Get-Content -LiteralPath $script:installLive -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
             if ($text) {
                 if ($text.Length -gt $script:installLastLen) {
                     $newPart = $text.Substring($script:installLastLen)
@@ -458,7 +465,7 @@ $btnInstall.Add_Click({
             }
             if (-not $p.HasExited) { return }
             # final read
-            $text = Get-Content -LiteralPath $script:installOut -Raw -ErrorAction SilentlyContinue
+            $text = Get-Content -LiteralPath $script:installLive -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
             if ($text -and $text.Length -gt $script:installLastLen) {
                 foreach ($line in (($text.Substring($script:installLastLen)) -split "`r?`n")) {
                     if ($line) { Append-Log $line }

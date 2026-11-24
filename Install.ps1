@@ -12,6 +12,7 @@ param(
     [string]$InstallDir     = '',
     [string]$SourceDir      = $PSScriptRoot,
     [switch]$NoShortcut,
+    [switch]$CreateShortcut,
     [switch]$Silent
 )
 
@@ -33,6 +34,12 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 
 $ErrorActionPreference = 'Stop'
+$liveLog = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_live.log'
+Remove-Item -LiteralPath $liveLog -Force -ErrorAction SilentlyContinue
+function Live {
+    param([string]$Message)
+    Add-Content -LiteralPath $liveLog -Value $Message -Encoding UTF8
+}
 Write-Host '=== Установка Backuper ==='
 Write-Host ''
 
@@ -47,7 +54,7 @@ if (-not $SourceFolder) {
     }
 }
 if (-not $SourceFolder) { Write-Host 'Отменено.'; exit 1 }
-Write-Output '[PROGRESS:10] Источник выбран'
+Live '[PROGRESS:10] Источник выбран'
 Write-Host "Источник: $SourceFolder"
 
 # --- 2. install directory ---
@@ -57,11 +64,15 @@ if (-not $InstallDir) {
     $InstallDir = if ($answer) { $answer.Trim('"') } else { $defaultInstall }
 }
 Write-Host "Установка в: $InstallDir"
-Write-Output '[PROGRESS:20] Папка установки выбрана'
+Live '[PROGRESS:20] Папка установки выбрана'
 
 # --- 3. desktop shortcut ---
-$makeShortcut = -not $NoShortcut
-if (-not $PSBoundParameters.ContainsKey('NoShortcut')) {
+$makeShortcut = $false
+if ($PSBoundParameters.ContainsKey('NoShortcut')) {
+    $makeShortcut = $false
+} elseif ($PSBoundParameters.ContainsKey('CreateShortcut')) {
+    $makeShortcut = $true
+} else {
     $answer = Read-Host 'Создать ярлык на рабочем столе? [Y/N, по умолчанию Y]'
     $makeShortcut = ($answer -eq '' -or $answer -match '^[YyДд]')
 }
@@ -76,11 +87,12 @@ $files = @(
     'MakeIcon.ps1', 'MakeShortcut.ps1', 'ИНСТРУКЦИЯ.md',
     'Открыть панель управления.cmd'
 )
-Write-Output '[PROGRESS:30] Копирование файлов программы...'
+Live '[PROGRESS:30] Копирование файлов программы...'
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 foreach ($f in $files) {
     $src = Join-Path $sourceDir $f
     if (Test-Path -LiteralPath $src) {
+        Live "  файл: $f"
         Copy-Item -LiteralPath $src -Destination (Join-Path $installDir $f) -Force
     } else {
         Write-Host "  пропущен (нет файла): $f"
@@ -102,7 +114,7 @@ $settings = [PSCustomObject]@{
     VersionRetentionDays = 30
 }
 $settings | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $installDir 'settings.json') -Encoding UTF8
-Write-Output '[PROGRESS:50] Настройки созданы'
+Live '[PROGRESS:50] Настройки созданы'
 
 # --- 6. scheduled tasks ---
 $a = New-ScheduledTaskAction -Execute 'powershell.exe' `
@@ -150,7 +162,7 @@ if ($makeShortcut) {
     $sc.Save()
 }
 
-Write-Output '[PROGRESS:80] Задачи планировщика зарегистрированы'
+Live '[PROGRESS:80] Задачи планировщика зарегистрированы'
 
 # --- register in "Apps & features" so Windows can uninstall it ---
 $uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper'
@@ -179,7 +191,7 @@ try {
 } catch { }
 
 Start-ScheduledTask -TaskName 'BackuperWatcher' -ErrorAction SilentlyContinue
-Write-Output '[PROGRESS:100] Установка завершена'
+Live '[PROGRESS:100] Установка завершена'
 Write-Host ''
 Write-Host '=== Установка завершена ==='
 Write-Host "Программа установлена в: $installDir"
