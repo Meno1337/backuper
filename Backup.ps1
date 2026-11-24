@@ -45,6 +45,7 @@ function Show-BackupToast {
 $core = Join-Path $PSScriptRoot 'BackupCore.ps1'
 $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $core,
              '-Destination', $Destination, '-LogDir', $LogDir,
+             '-VersionsDir', $VersionsDir,
              '-LogRetentionDays', "$LogRetentionDays", '-Sources')
 $argList += $Sources
 $out = & powershell.exe @argList 2>&1 | Out-String

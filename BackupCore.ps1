@@ -9,10 +9,12 @@ param(
     [string[]]$Sources   = @(),
     [string]$Destination = 'C:\Users\karpovD\Desktop\backuper\Files',
     [string]$LogDir      = 'C:\Users\karpovD\Desktop\backuper\Logs',
+    [string]$VersionsDir = 'C:\Users\karpovD\Desktop\backuper\Versions',
     [int]$LogRetentionDays = 90
 )
 
 $ErrorActionPreference = 'Stop'
+try { . (Join-Path $PSScriptRoot 'Versions.ps1') } catch { }
 # -File in PowerShell 5.1 cannot bind several values to one array parameter;
 # callers pass a single pipe-separated string instead.
 $expandedSources = [System.Collections.Generic.List[string]]::new()
@@ -105,6 +107,12 @@ try {
         $target = Join-Path $Destination $folderName
         New-Item -ItemType Directory -Path $target -Force | Out-Null
         Write-Log "[$folderName] $src -> $target"
+
+        # keep a version of every change (added / changed / deleted)
+        try {
+            $snap = New-VersionSnapshot -Source $src -Destination $target -VersionsDir $VersionsDir
+            if ($snap) { Write-Log "[$folderName] сохранена версия изменений" }
+        } catch { Write-Log "[$folderName] ошибка версии: $($_.Exception.Message)" }
 
         $rbArgs = @($src, $target, '/E', '/COPY:DAT', '/R:2', '/W:3',
                     '/NP', '/NFL', '/NDL', "/LOG+:$logFile")

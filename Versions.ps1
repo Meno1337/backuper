@@ -56,14 +56,18 @@ function New-VersionSnapshot {
         if (-not $destMap.ContainsKey($rel) -or $destMap[$rel].Key -ne $sourceMap[$rel].Key) {
             [void]$lines.Add("+ $($sourceMap[$rel].Time)  $rel")
 
-            # keep the PREVIOUS version of a file (only if it existed in the copy)
+            # store a version for EVERY change:
+            # - if the file existed in the copy -> keep its previous version
+            # - if it is new -> keep the newly added file itself
+            $target = Join-Path $snapshot $rel
+            $dir = Split-Path -Parent $target
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
             if ($destMap.ContainsKey($rel)) {
-                $target = Join-Path $snapshot $rel
-                $dir = Split-Path -Parent $target
-                if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
                 Copy-Item -LiteralPath $destMap[$rel].Full -Destination $target -Force
-                [void]$saved.Add($rel)
+            } else {
+                Copy-Item -LiteralPath $sourceMap[$rel].Full -Destination $target -Force
             }
+            [void]$saved.Add($rel)
         }
     }
 
@@ -71,6 +75,12 @@ function New-VersionSnapshot {
     foreach ($rel in $destMap.Keys) {
         if (-not $sourceMap.ContainsKey($rel)) {
             [void]$lines.Add("- $($destMap[$rel].Time)  $rel")
+            # keep the last known copy of the deleted file so it can be restored
+            $target = Join-Path $snapshot $rel
+            $dir = Split-Path -Parent $target
+            if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            Copy-Item -LiteralPath $destMap[$rel].Full -Destination $target -Force
+            [void]$saved.Add($rel)
         }
     }
 

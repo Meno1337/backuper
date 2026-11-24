@@ -383,6 +383,7 @@ $xaml = @'
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <!-- Buttons -->
@@ -447,13 +448,30 @@ $xaml = @'
                         </Grid>
                     </Border>
 
-                    <!-- Log area -->
-                    <Border Grid.Row="3" Background="#FF11111B" CornerRadius="8" Padding="8" Margin="0,12,0,0"
-                            Height="130">
-                        < ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto">
-                            <TextBlock x:Name="LogBox" Text="" FontFamily="Consolas" FontSize="11"
-                                       Foreground="#FFA9ADC1" TextWrapping="Wrap"/>
-                        </ScrollViewer>
+                    <GridSplitter Grid.Row="3" Height="6" HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Center" Background="#FF45475A" Cursor="SizeNS"/>
+
+                    <!-- Log area (resize with the splitter above) -->
+                    <Border Grid.Row="4" Background="#FF11111B" CornerRadius="8" Padding="8" Margin="0,6,0,0"
+                            Height="160" MinHeight="90">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="0,0,0,6">
+                                <TextBlock Text="Лог:" FontSize="11" Foreground="#FF6C7086"
+                                           VerticalAlignment="Center"/>
+                                <Button x:Name="BtnCopyLogs" Content="⧉  Копировать логи" HorizontalAlignment="Right"
+                                        FontSize="10" Padding="6,3" Background="Transparent"
+                                        BorderThickness="0" Foreground="#FF89B4FA" Cursor="Hand"
+                                        ToolTip="Скопировать содержимое логов в буфер обмена"/>
+                            </Grid>
+                            < ScrollViewer x:Name="LogScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <TextBlock x:Name="LogBox" Text="" FontFamily="Consolas" FontSize="11"
+                                           Foreground="#FFA9ADC1" TextWrapping="Wrap"/>
+                            </ScrollViewer>
+                        </Grid>
                     </Border>
                 </Grid>
             </TabItem>
@@ -477,6 +495,9 @@ $xaml = @'
                                 Margin="0,0,10,0" Style="{StaticResource PrimaryButton}"/>
                         <Button x:Name="BtnRefreshMissing" Content="⟳  Обновить список" Width="170"
                                 Style="{StaticResource InfoButton}"/>
+                        <Button x:Name="BtnClearMissing" Content="🗑  Очистить" Width="140" Margin="10,0,0,0"
+                                Style="{StaticResource DangerButton}"
+                                ToolTip="Удалить выбранный файл из копии (на сервере его уже нет)"/>
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -674,6 +695,8 @@ $btnRestore       = Find 'BtnRestore'
 $btnOpenFolder    = Find 'BtnOpenFolder'
 $btnRestoreSelected = Find 'BtnRestoreSelected'
 $btnRefreshMissing = Find 'BtnRefreshMissing'
+$btnClearMissing  = Find 'BtnClearMissing'
+$btnCopyLogs      = Find 'BtnCopyLogs'
 $btnSaveSettings  = Find 'BtnSaveSettings'
 $btnInstallTask   = Find 'BtnInstallTask'
 $btnCleanLogs     = Find 'BtnCleanLogs'
@@ -1007,6 +1030,7 @@ $btnBackup.Add_Click({
         $paths = @(Get-SourcePaths)
         $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BackupCore,
                      '-Destination', $txtDest.Text, '-LogDir', $txtLogs.Text,
+                     '-VersionsDir', $txtVersionsDir.Text,
                      '-Sources', ($paths -join '|'))
         $out = & powershell.exe @argList 2>&1 | Out-String
 
@@ -1028,7 +1052,47 @@ $btnBackup.Add_Click({
     }
 })
 
+$btnCopyLogs.Add_Click({
+    try {
+        $sb = [System.Text.StringBuilder]::new()
+        $files = @(Get-ChildItem -LiteralPath $txtLogs.Text -File -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Extension -eq '.log' } | Sort-Object LastWriteTime -Descending)
+        foreach ($f in $files) {
+            [void]$sb.AppendLine("===== $($f.Name) =====")
+            $lines = @(Get-Content -LiteralPath $f.FullName -Encoding UTF8 -ErrorAction SilentlyContinue)
+            $start = [Math]::Max(0, $lines.Count - 300)
+            for ($i = $start; $i -lt $lines.Count; $i++) { [void]$sb.AppendLine($lines[$i]) }
+            [void]$sb.AppendLine()
+        }
+        if ($sb.Length -eq 0) { [void]$sb.AppendLine('Логи пока пусты.') }
+        [System.Windows.Forms.Clipboard]::SetText($sb.ToString())
+        Append-Log "Логи скопированы в буфер обмена ($($files.Count) файл.)."
+    } catch {
+        [System.Windows.MessageBox]::Show("Не удалось скопировать логи: $($_.Exception.Message)", 'Ошибка', 'OK', 'Error')
+    }
+})
+
 $btnRefreshMissing.Add_Click({ Refresh-Dashboard })
+
+$btnClearMissing.Add_Click({
+    $sel = $missingList.SelectedItem
+    if (-not $sel) {
+        [System.Windows.MessageBox]::Show('Сначала выберите файл в списке.', 'Backuper', 'OK', 'Information')
+        return
+    }
+    $res = [System.Windows.MessageBox]::Show(
+        "Удалить этот файл из копии?`n`n$sel`n`nНа сервере его уже нет — из резервной копии он будет удалён безвозвратно.",
+        'Подтверждение очистки', 'YesNo', 'Question')
+    if ($res -ne 'Yes') { return }
+    try {
+        $path = Join-Path $txtDest.Text ([string]$sel)
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+        Append-Log "ОЧИЩЕНО: $sel"
+        Refresh-Dashboard
+    } catch {
+        [System.Windows.MessageBox]::Show("Ошибка очистки: $($_.Exception.Message)", 'Ошибка', 'OK', 'Error')
+    }
+})
 
 $btnRestore.Add_Click({ Refresh-Dashboard; $tab = Find 'TabRestore'; $tab.IsSelected = $true })
 
