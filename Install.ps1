@@ -7,14 +7,28 @@
 
 #Requires -Version 5.1
 
-$sourceDir = Split-Path -Parent $PSCommandPath
+param(
+    [string]$SourceFolder   = '',
+    [string]$InstallDir     = '',
+    [string]$SourceDir      = $PSScriptRoot,
+    [switch]$NoShortcut,
+    [switch]$Silent
+)
 
 # --- self-elevate (needed for Program Files) ---
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    $args = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $args | Out-Null
+    $argList = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
+    foreach ($key in $PSBoundParameters.Keys) {
+        $v = $PSBoundParameters[$key]
+        if ($v -is [System.Management.Automation.SwitchParameter]) {
+            if ($v) { $argList += ' -' + $key }
+        } else {
+            $argList += ' -' + $key + ' "' + $v + '"'
+        }
+    }
+    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList | Out-Null
     exit
 }
 
@@ -23,35 +37,39 @@ Write-Host '=== Установка Backuper ==='
 Write-Host ''
 
 # --- 1. source folder ---
-if (Test-Path -LiteralPath (Join-Path $sourceDir 'FolderPicker.ps1')) {
-    . (Join-Path $sourceDir 'FolderPicker.ps1')
-    $sourceFolder = Select-ModernFolder -Title 'Укажите папку на сервере, которую нужно копировать'
-} else {
-    $sourceFolder = $null
+if (-not $SourceFolder) {
+    if (Test-Path -LiteralPath (Join-Path $SourceDir 'FolderPicker.ps1')) {
+        . (Join-Path $SourceDir 'FolderPicker.ps1')
+        $SourceFolder = Select-ModernFolder -Title 'Укажите папку на сервере, которую нужно копировать'
+    }
+    if (-not $SourceFolder) {
+        $SourceFolder = Read-Host 'Введите путь к папке источника (например \\SERVER\transfer\карпов)'
+    }
 }
-if (-not $sourceFolder) {
-    $sourceFolder = Read-Host 'Введите путь к папке источника (например \\SERVER\transfer\карпов)'
-}
-if (-not $sourceFolder) { Write-Host 'Отменено.'; exit 1 }
-
-Write-Host "Источник: $sourceFolder"
+if (-not $SourceFolder) { Write-Host 'Отменено.'; exit 1 }
+Write-Host "Источник: $SourceFolder"
 
 # --- 2. install directory ---
 $defaultInstall = 'C:\Program Files (x86)\Backuper'
-$answer = Read-Host "Папка установки [$defaultInstall]"
-$installDir = if ($answer) { $answer.Trim('"') } else { $defaultInstall }
-Write-Host "Установка в: $installDir"
+if (-not $InstallDir) {
+    $answer = Read-Host "Папка установки [$defaultInstall]"
+    $InstallDir = if ($answer) { $answer.Trim('"') } else { $defaultInstall }
+}
+Write-Host "Установка в: $InstallDir"
 
 # --- 3. desktop shortcut ---
-$answer = Read-Host 'Создать ярлык на рабочем столе? [Y/N, по умолчанию Y]'
-$makeShortcut = ($answer -eq '' -or $answer -match '^[YyДд]')
+$makeShortcut = -not $NoShortcut
+if (-not $PSBoundParameters.ContainsKey('NoShortcut')) {
+    $answer = Read-Host 'Создать ярлык на рабочем столе? [Y/N, по умолчанию Y]'
+    $makeShortcut = ($answer -eq '' -or $answer -match '^[YyДд]')
+}
 
 # --- 4. copy program files ---
 $files = @(
     'Backup.ps1', 'BackupCore.ps1', 'BackuperGUI.ps1', 'Watcher.ps1',
     'Versions.ps1', 'FolderPicker.ps1', 'CleanLogs.ps1', 'Restore.ps1',
     'Update.ps1', 'version.json', 'app_icon_v2.ico', 'Backuper.exe',
-    'BackuperInstaller.exe', 'Launcher.cs', 'InstallerLauncher.cs',
+    'BackuperInstaller.exe', 'InstallerGUI.ps1', 'Launcher.cs', 'InstallerLauncher.cs',
     'MakeIcon.ps1', 'MakeShortcut.ps1', 'ИНСТРУКЦИЯ.md',
     'Открыть панель управления.cmd'
 )
