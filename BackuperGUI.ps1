@@ -1114,6 +1114,7 @@ $btnBackup.Add_Click({
                      '-Destination', $txtDest.Text, '-LogDir', $txtLogs.Text,
                      '-VersionsDir', $txtVersionsDir.Text,
                      '-Sources', ($paths -join '|'))
+        if ($chkCompress.IsChecked) { $argList += '-Compress' }
         $out = & powershell.exe @argList 2>&1 | Out-String
 
         $r = $out | ConvertFrom-Json

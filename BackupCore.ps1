@@ -10,6 +10,7 @@ param(
     [string]$Destination = 'C:\Users\karpovD\Desktop\backuper\Files',
     [string]$LogDir      = 'C:\Users\karpovD\Desktop\backuper\Logs',
     [string]$VersionsDir = 'C:\Users\karpovD\Desktop\backuper\Versions',
+    [switch]$Compress,
     [int]$LogRetentionDays = 90
 )
 
@@ -126,6 +127,14 @@ try {
         $copiedHere = @(Get-ChildItem -LiteralPath $target -File -Recurse -Force -ErrorAction SilentlyContinue).Count
         $result.Copied += $copiedHere
         Write-Log "[$folderName] $copiedHere file(s) in copy"
+
+        if ($Compress) {
+            $compact = Join-Path $env:WINDIR 'System32\compact.exe'
+            if (Test-Path -LiteralPath $compact) {
+                & $compact /c /s /i "$target" 2>&1 | Out-Null
+                Write-Log "[$folderName] NTFS-сжатие применено"
+            }
+        }
 
         # missing files = present in copy but gone from this source
         $sourceSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
