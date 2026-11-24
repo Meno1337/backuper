@@ -59,8 +59,8 @@ class Program
             psi.FileName = "powershell.exe";
             psi.Arguments = args;
             psi.WorkingDirectory = work;
-            psi.UseShellExecute = true;
-            psi.Verb = "runas";
+            psi.UseShellExecute = false;   // no admin rights needed
+            psi.CreateNoWindow = true;
             Process.Start(psi);
         }
         catch

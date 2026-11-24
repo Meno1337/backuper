@@ -21,14 +21,7 @@ public static class BackuperSetupAppId {
 $ErrorActionPreference = 'Stop'
 $BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# --- self-elevate (Program Files needs admin) ---
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = New-Object Security.Principal.WindowsPrincipal($identity)
-if (-not $env:BACKUPER_SKIP_ELEVATE -and -not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList `
-        "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" | Out-Null
-    exit
-}
+# No admin rights required - installs into the user profile.
 
 if (Test-Path -LiteralPath (Join-Path $BaseDir 'FolderPicker.ps1')) {
     . (Join-Path $BaseDir 'FolderPicker.ps1')
@@ -258,14 +251,14 @@ $xaml = @'
                 <Border Background="#FF181825" CornerRadius="10" Padding="16" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="2. Папка установки" FontSize="15" FontWeight="Bold" Foreground="#FF89B4FA"/>
-                        <TextBlock Text="По умолчанию C:\Program Files (x86)\Backuper. Требуются права администратора."
+                        <TextBlock Text="По умолчанию папка пользователя %LOCALAPPDATA%\Backuper. Права администратора не нужны."
                                    Foreground="#FFA9ADC1" FontSize="12" Margin="0,4,0,10" TextWrapping="Wrap"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtInstall" Grid.Column="0" Text="C:\Program Files (x86)\Backuper"/>
+                            <TextBox x:Name="TxtInstall" Grid.Column="0" Text="C:\Users\User\AppData\Local\Backuper"/>
                             <Button x:Name="BtnPickInstall" Grid.Column="1" Content="📁  Выбрать папку"
                                     Margin="8,0,0,0" Width="160"/>
                         </Grid>
@@ -332,6 +325,7 @@ $txtSource = Find 'TxtSource'; $txtInstall = Find 'TxtInstall'
 $btnPickSource = Find 'BtnPickSource'; $btnPickInstall = Find 'BtnPickInstall'
 $chkShortcut = Find 'ChkShortcut'; $btnInstall = Find 'BtnInstall'
 $btnCheckGitHub = Find 'BtnCheckGitHub'; $btnDownloadLatest = Find 'BtnDownloadLatest'
+$txtInstall.Text = Join-Path $env:LOCALAPPDATA 'Backuper'
 $repoText = Find 'RepoText'; $gitHubStatus = Find 'GitHubStatus'
 $logBox = Find 'LogBox'; $logScroll = Find 'LogScroll'
 $installProgress = Find 'InstallProgress'; $progressText = Find 'ProgressText'

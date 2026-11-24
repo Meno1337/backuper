@@ -30,22 +30,7 @@ if ($ConfigFile -and (Test-Path -LiteralPath $ConfigFile)) {
     } catch { }
 }
 
-# --- self-elevate (needed for Program Files) ---
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = New-Object Security.Principal.WindowsPrincipal($identity)
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    $argList = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
-    foreach ($key in $PSBoundParameters.Keys) {
-        $v = $PSBoundParameters[$key]
-        if ($v -is [System.Management.Automation.SwitchParameter]) {
-            if ($v) { $argList += ' -' + $key }
-        } else {
-            $argList += ' -' + $key + ' "' + $v + '"'
-        }
-    }
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList | Out-Null
-    exit
-}
+# No admin rights required: the default install folder is inside the user profile.
 
 $ErrorActionPreference = 'Stop'
 $liveLog = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_live.log'
@@ -72,7 +57,7 @@ Live '[PROGRESS:10] Источник выбран'
 Write-Host "Источник: $SourceFolder"
 
 # --- 2. install directory ---
-$defaultInstall = 'C:\Program Files (x86)\Backuper'
+$defaultInstall = Join-Path $env:LOCALAPPDATA 'Backuper'
 if (-not $InstallDir) {
     $answer = Read-Host "Папка установки [$defaultInstall]"
     $InstallDir = if ($answer) { $answer.Trim('"') } else { $defaultInstall }
@@ -192,7 +177,7 @@ if ($makeShortcut) {
 Live '[PROGRESS:80] Задачи планировщика зарегистрированы'
 
 # --- register in "Apps & features" so Windows can uninstall it ---
-$uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper'
+$uninstallKey = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper'
 New-Item -Path $uninstallKey -Force | Out-Null
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayName' -Value 'Backuper' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.2.0' -Force
@@ -204,7 +189,7 @@ Set-ItemProperty -Path $uninstallKey -Name 'NoRepair' -Value 1 -Force
 
 # --- Start menu shortcuts ---
 try {
-    $startMenu = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Backuper'
+    $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Backuper'
     New-Item -ItemType Directory -Path $startMenu -Force | Out-Null
     $ws = New-Object -ComObject WScript.Shell
     $sc = $ws.CreateShortcut((Join-Path $startMenu 'Backuper.lnk'))

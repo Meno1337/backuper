@@ -22,18 +22,12 @@ public static class BackuperUninstallAppId {
 '@
 [void][BackuperUninstallAppId]::SetCurrentProcessExplicitAppUserModelID('Backuper.App.Uninstall')
 
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = New-Object Security.Principal.WindowsPrincipal($identity)
-if (-not $env:BACKUPER_SKIP_ELEVATE -and -not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList `
-        "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" | Out-Null
-    exit
-}
+# No admin rights required.
 if (Test-Path -LiteralPath (Join-Path $BaseDir 'FolderPicker.ps1')) {
     . (Join-Path $BaseDir 'FolderPicker.ps1')
 }
 
-$defaultInstall = 'C:\Program Files (x86)\Backuper'
+$defaultInstall = Join-Path $env:LOCALAPPDATA 'Backuper'
 $cfg = Join-Path $defaultInstall 'settings.json'
 if (Test-Path -LiteralPath $cfg) {
     try { $defaultInstall = (Get-Item -LiteralPath $cfg).DirectoryName } catch { }

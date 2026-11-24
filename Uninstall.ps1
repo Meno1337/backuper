@@ -6,7 +6,7 @@
 
 param(
     [string]$ConfigFile = '',
-    [string]$InstallDir = 'C:\Program Files (x86)\Backuper',
+    [string]$InstallDir = '',
     [switch]$KeepData,
     [switch]$Silent
 )
@@ -19,18 +19,8 @@ if ($ConfigFile -and (Test-Path -LiteralPath $ConfigFile)) {
     } catch { }
 }
 
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = New-Object Security.Principal.WindowsPrincipal($identity)
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    $argList = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
-    foreach ($key in $PSBoundParameters.Keys) {
-        $v = $PSBoundParameters[$key]
-        if ($v -is [System.Management.Automation.SwitchParameter]) { if ($v) { $argList += ' -' + $key } }
-        else { $argList += ' -' + $key + ' "' + $v + '"' }
-    }
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList | Out-Null
-    exit
-}
+if (-not $InstallDir) { $InstallDir = Join-Path $env:LOCALAPPDATA 'Backuper' }
+# No admin rights required.
 
 $ErrorActionPreference = 'Stop'
 $liveLog = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_uninstall_live.log'
@@ -56,9 +46,9 @@ Live '[PROGRESS:25] Задачи удалены'
 Live '[PROGRESS:40] Удаление ярлыка...'
 $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Backuper.lnk'
 if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue }
-$startMenu = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Backuper'
+$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'Backuper'
 if (Test-Path -LiteralPath $startMenu) { Remove-Item -LiteralPath $startMenu -Recurse -Force -ErrorAction SilentlyContinue }
-Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper' -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper' -Recurse -Force -ErrorAction SilentlyContinue
 Live '[PROGRESS:55] Ярлыки и регистрация удалены'
 
 Live '[PROGRESS:70] Удаление файлов программы...'
