@@ -16,31 +16,25 @@ $headers = @{
 }
 $api = 'https://api.github.com/repos/Meno1337/backuper'
 
-# NOTE: keep release notes in ASCII to avoid encoding issues with PowerShell 5.1
-$notes = @"
-## Backuper $ver
-
-A single-file installer downloads all program files from GitHub automatically.
-
-### Features
-- Automatic backup every 2 hours and at Windows logon
-- Instant reaction to new files (folder check every 20 seconds)
-- Version history: '+' added/changed, '-' removed, with one-click restore
-- Tray notifications, progress bars and live logs for install/uninstall
-- Full Russian-language GUI, custom icon, minimize to tray
-- Silent update check on every launch and a manual check button
-- Built-in uninstaller registered in Windows Apps & Features
-
-### Install
-Download BackuperInstaller.exe (the only asset), run it as administrator,
-pick the network source folder and the install directory.
-The installer downloads the rest of the files from this repository.
-
-### Remove
-Use Windows Settings -> Apps -> Backuper -> Uninstall, or the
-'Uninstall Backuper' shortcut in the Start menu. Your backed up files are
-preserved by default.
-"@
+# Release notes are taken from the CHANGELOG.md section for this version.
+$changelogPath = Join-Path $dir 'CHANGELOG.md'
+$changes = "See CHANGELOG.md for details."
+if (Test-Path -LiteralPath $changelogPath) {
+    $lines = Get-Content -LiteralPath $changelogPath -Encoding UTF8
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match "^##\s+[v]?$([regex]::Escape($ver))\b") { $start = $i; break }
+    }
+    if ($start -ge 0) {
+        $collected = [System.Collections.Generic.List[string]]::new()
+        for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^##\s+') { break }
+            [void]$collected.Add($lines[$i])
+        }
+        $changes = ($collected | Where-Object { $_.Trim() } | ForEach-Object { $_.TrimEnd() }) -join "`n"
+    }
+}
+$notes = "## Backuper $ver`n`nWhat's new:`n$changes`n`nInstall`nDownload BackuperInstaller.exe (the only asset) and run it. No admin rights required - it installs into your user profile and downloads the rest from GitHub.`n`nRemove`nWindows Settings -> Apps -> Backuper -> Uninstall, or the 'Uninstall Backuper' shortcut in the Start menu."
 
 $body = @{
     tag_name   = $tag

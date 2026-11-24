@@ -11,10 +11,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$updateLive = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_update_live.log'
+Remove-Item -LiteralPath $updateLive -Force -ErrorAction SilentlyContinue
+function UpLive {
+    param([string]$Message)
+    Add-Content -LiteralPath $updateLive -Value $Message -Encoding UTF8
+}
 $versionFile = Join-Path $InstallDir 'version.json'
 
+UpLive '[UPDATE:5] Проверка версии...'
 if (-not (Test-Path -LiteralPath $versionFile)) {
-    Write-Output 'ОШИБКА: не найден version.json.'
+    UpLive 'ОШИБКА: не найден version.json.'
     exit 1
 }
 $info = Get-Content -LiteralPath $versionFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -30,9 +37,10 @@ $apiUrl = $apiUrl.TrimEnd('/') + '/releases/latest'
 
 try {
     $headers = @{ 'User-Agent' = 'Backuper-Updater' }
+    UpLive '[UPDATE:15] Запрос к GitHub...'
     $release = Invoke-RestMethod -Uri $apiUrl -Headers $headers -TimeoutSec 20
 } catch {
-    Write-Output "Не удалось проверить обновления: $($_.Exception.Message)"
+    UpLive "Не удалось проверить обновления: $($_.Exception.Message)"
     exit 0
 }
 
@@ -44,11 +52,11 @@ catch {
 }
 
 if ($target -le $current) {
-    Write-Output "У вас актуальная версия $($info.Version)."
+    UpLive '[UPDATE:100] Актуальная версия установлена.'
     exit 0
 }
 
-Write-Output "Доступна версия $latest (установлена $($info.Version))."
+UpLive "[UPDATE:25] Доступна версия $latest (установлена $($info.Version))."
 if ($Check) { exit 0 }
 
 $asset = $release.assets | Where-Object { $_.name -match '\.zip$' } | Select-Object -First 1
@@ -64,7 +72,9 @@ $temp = Join-Path ([System.IO.Path]::GetTempPath()) ('backuper_update_' + [guid]
 New-Item -ItemType Directory -Path $temp -Force | Out-Null
 $zip = Join-Path $temp 'update.zip'
 try {
+    UpLive '[UPDATE:40] Скачивание архива с GitHub...'
     Invoke-WebRequest -Uri $downloadUrl -OutFile $zip -Headers $headers -TimeoutSec 120
+    UpLive '[UPDATE:60] Распаковка...'
     $unpack = Join-Path $temp 'unpacked'
     Expand-Archive -LiteralPath $zip -DestinationPath $unpack -Force
     $roots = @(Get-ChildItem -LiteralPath $unpack -Directory -ErrorAction SilentlyContinue |
@@ -74,7 +84,12 @@ try {
     $preserve = @('settings.json', 'app_icon_v2.ico', 'app_icon.ico', 'version.json')
     $preserveDirs = @('Files', 'Logs', 'Versions')
 
-    Get-ChildItem -LiteralPath $unpack -Recurse -File | ForEach-Object {
+    $filesToCopy = @(Get-ChildItem -LiteralPath $unpack -Recurse -File)
+    $done = 0
+    foreach ($fileItem in $filesToCopy) {
+        $_ = $fileItem
+        $done++
+        if ($done % 3 -eq 0) { UpLive "[UPDATE:$([int](60 + 30 * $done / [Math]::Max(1,$filesToCopy.Count)))] Копирование файлов $done из $($filesToCopy.Count)..." }
         $rel = $_.FullName.Substring($unpack.Length).TrimStart('\', '/')
         if ($rel -match '/' -or $rel -match '\\') {
             # allow subfolders but never overwrite preserved directories
