@@ -14,23 +14,24 @@ $headers = @{
 }
 $api = 'https://api.github.com/repos/Meno1337/backuper'
 
+# NOTE: keep release notes in ASCII to avoid encoding issues with PowerShell 5.1
 $body = @{
     tag_name   = 'v1.0.0'
-    name       = 'Backuper v1.0.0 — первый релиз'
+    name       = 'Backuper v1.0.0 - First stable release'
     body       = @'
 ## Backuper v1.0.0
 
-Первый стабильный релиз.
+First stable release.
 
-### Возможности
-- Автоматическое копирование каждые 2 часа + при входе в Windows
-- Мгновенная реакция на новые файлы (проверка каждые 20 секунд)
-- История версий (`+` добавлен/изменён, `−` удалён) с восстановлением
-- Всплывающие уведомления и графическая панель на русском
-- Графический установщик с проверкой обновлений через GitHub
+### Features
+- Automatic copy every 2 hours and at Windows logon
+- Instant reaction to new files (folder check every 20 seconds)
+- Version history: `+` added/changed, `-` removed, with one-click restore
+- Tray notifications and a full Russian-language GUI
+- Graphical installer with GitHub update check
 
-### Установка
-Скачайте `Backuper-v1.0.0.zip`, распакуйте и запустите `BackuperInstaller.exe`.
+### Installation
+Download `Backuper-v1.0.0.zip`, extract it and run `BackuperInstaller.exe`.
 '@
     draft      = $false
     prerelease = $false
