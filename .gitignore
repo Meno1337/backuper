@@ -1,0 +1,15 @@
+# User data / backups (never upload)
+Files/
+Logs/
+Versions/
+settings.json
+
+# Debug and temporary files
+*.log
+*.err
+gui_check.err
+watcher_debug.txt
+icon_preview.png
+
+# Windows thumbnails
+Thumbs.db
