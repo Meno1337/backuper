@@ -8,6 +8,7 @@
 #Requires -Version 5.1
 
 param(
+    [string]$ConfigFile     = '',
     [string]$SourceFolder   = '',
     [string]$InstallDir     = '',
     [string]$SourceDir      = $PSScriptRoot,
@@ -15,6 +16,19 @@ param(
     [switch]$CreateShortcut,
     [switch]$Silent
 )
+
+# A UTF-8 config file is the reliable way to pass Russian/UNC paths from the GUI,
+# because PowerShell 5.1 mangles non-ASCII in Start-Process -ArgumentList.
+if ($ConfigFile -and (Test-Path -LiteralPath $ConfigFile)) {
+    try {
+        $cfg = Get-Content -LiteralPath $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($cfg.SourceFolder) { $SourceFolder = $cfg.SourceFolder }
+        if ($cfg.InstallDir)   { $InstallDir   = $cfg.InstallDir }
+        if ($cfg.SourceDir)    { $SourceDir    = $cfg.SourceDir }
+        if ($cfg.Shortcut -eq $true)  { $CreateShortcut = $true }
+        if ($cfg.Shortcut -eq $false) { $NoShortcut = $true }
+    } catch { }
+}
 
 # --- self-elevate (needed for Program Files) ---
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -119,7 +133,7 @@ Live '[PROGRESS:50] Настройки созданы'
 
 # --- 6. scheduled tasks ---
 $a = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Backup.ps1`" -LogRetentionDays 7 -VersionsDir `"$installDir\Versions`"" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Backup.ps1`" -Source `"$($settings.Source)`" -LogRetentionDays 7 -VersionsDir `"$installDir\Versions`"" `
     -WorkingDirectory $installDir
 $t1 = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddHours(2)) `
     -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Days 3650)
@@ -131,7 +145,7 @@ Register-ScheduledTask -TaskName 'BackuperHourly' -Action $a -Trigger @($t1, $t2
     -Description 'Backuper: копирование каждые 2 часа + уведомления' | Out-Null
 
 $aw = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Watcher.ps1`" -VersionsDir `"$installDir\Versions`"" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$installDir\Watcher.ps1`" -Source `"$($settings.Source)`" -VersionsDir `"$installDir\Versions`"" `
     -WorkingDirectory $installDir
 $tw = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $sw = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
@@ -179,7 +193,7 @@ Live '[PROGRESS:80] Задачи планировщика зарегистрир
 $uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper'
 New-Item -Path $uninstallKey -Force | Out-Null
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayName' -Value 'Backuper' -Force
-Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.2.0' -Force
+Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.2.1' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'Publisher' -Value 'Backuper' -Force
 Set-ItemProperty -Path $uninstallKey -Name 'DisplayIcon' -Value (Join-Path $installDir 'app_icon_v2.ico') -Force
 Set-ItemProperty -Path $uninstallKey -Name 'UninstallString' -Value ('"' + (Join-Path $installDir 'BackuperUninstaller.exe') + '"') -Force
@@ -209,3 +223,4 @@ Write-Host "Программа установлена в: $installDir"
 Write-Host "Источник: $sourceFolder"
 Write-Host 'Задачи планировщика зарегистрированы.'
 if (-not $Silent) { Read-Host 'Нажмите Enter для выхода' }
+

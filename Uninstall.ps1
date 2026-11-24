@@ -5,10 +5,19 @@
 #>
 
 param(
+    [string]$ConfigFile = '',
     [string]$InstallDir = 'C:\Program Files (x86)\Backuper',
     [switch]$KeepData,
     [switch]$Silent
 )
+
+if ($ConfigFile -and (Test-Path -LiteralPath $ConfigFile)) {
+    try {
+        $cfg = Get-Content -LiteralPath $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($cfg.InstallDir) { $InstallDir = $cfg.InstallDir }
+        if ($cfg.KeepData -eq $true) { $KeepData = $true }
+    } catch { }
+}
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)

@@ -425,12 +425,17 @@ $btnInstall.Add_Click({
     }
     $btnInstall.IsEnabled = $false
     Append-Log 'Запуск установки...'
+    # pass paths via a UTF-8 config file (Start-Process mangles non-ASCII command-line args)
+    $cfgPath = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_config.json'
+    $cfgObj = [PSCustomObject]@{
+        SourceFolder = $txtSource.Text
+        InstallDir   = $txtInstall.Text
+        SourceDir    = $BaseDir
+        Shortcut     = [bool]$chkShortcut.IsChecked
+    }
+    $cfgObj | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $cfgPath -Encoding UTF8
     $args = '-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $BaseDir 'Install.ps1') + '"' +
-            ' -SourceFolder "' + $txtSource.Text + '"' +
-            ' -InstallDir "' + $txtInstall.Text + '"' +
-            ' -SourceDir "' + $BaseDir + '"' +
-            ' -Silent'
-    if ($chkShortcut.IsChecked) { $args += ' -CreateShortcut' } else { $args += ' -NoShortcut' }
+            ' -ConfigFile "' + $cfgPath + '" -Silent'
     $out = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_output.txt'
     $err = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_install_error.txt'
     Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue

@@ -267,9 +267,11 @@ $btnUninstall.Add_Click({
         'Удалить Backuper с этого компьютера?', 'Подтверждение', 'YesNo', 'Question')
     if ($confirm -ne 'Yes') { return }
     $btnUninstall.IsEnabled = $false
+    $cfgPath = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_uninstall_config.json'
+    ([PSCustomObject]@{ InstallDir = $txtInstall.Text; KeepData = [bool]$chkKeepData.IsChecked }) |
+        ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $cfgPath -Encoding UTF8
     $args = '-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $BaseDir 'Uninstall.ps1') + '"' +
-            ' -InstallDir "' + $txtInstall.Text + '" -Silent'
-    if ($chkKeepData.IsChecked) { $args += ' -KeepData' }
+            ' -ConfigFile "' + $cfgPath + '" -Silent'
     $out = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_uninstall_output.txt'
     $err = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_uninstall_error.txt'
     Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue

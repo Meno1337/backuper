@@ -1063,7 +1063,7 @@ $btnInstallTask.Add_Click({
     try {
         $dir = $BaseDir
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-            -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$dir\Backup.ps1`" -LogRetentionDays $days -VersionsDir `"$vdir`"" `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$dir\Backup.ps1`" -Source `"$($txtSource.Text)`" -LogRetentionDays $days -VersionsDir `"$vdir`"" `
             -WorkingDirectory $dir
         $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddHours($hours)) `
             -RepetitionInterval (New-TimeSpan -Hours $hours) -RepetitionDuration (New-TimeSpan -Days 3650)
