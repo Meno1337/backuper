@@ -1176,7 +1176,7 @@ $btnCompressNow.Add_Click({
         param([string]$dest)
         $compact = "$env:WINDIR\System32\compact.exe"
         if (Test-Path -LiteralPath $compact) {
-            & $compact /c /s /i "$dest" 2>&1 | Out-Null
+            & $compact /c /s /i "$dest\*" 2>&1 | Out-Null
         }
     } -ArgumentList $txtDest.Text
     $compressTimer.Start()

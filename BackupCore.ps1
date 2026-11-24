@@ -131,7 +131,7 @@ try {
         if ($Compress) {
             $compact = Join-Path $env:WINDIR 'System32\compact.exe'
             if (Test-Path -LiteralPath $compact) {
-                & $compact /c /s /i "$target" 2>&1 | Out-Null
+                & $compact /c /s /i "$target\*" 2>&1 | Out-Null
                 Write-Log "[$folderName] NTFS-сжатие применено"
             }
         }
