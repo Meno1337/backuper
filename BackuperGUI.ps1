@@ -372,7 +372,7 @@ $xaml = @'
             </StackPanel>
         </Grid>
 
-        <TabControl Grid.Row="1" Background="#FF181825" BorderThickness="0">
+        <TabControl x:Name="MainTabs" Grid.Row="1" Background="#FF181825" BorderThickness="0">
             <!-- TAB 1: Dashboard -->
             <TabItem Header="Обзор" x:Name="TabDashboard">
                 <Grid Margin="0,12,0,0">
@@ -558,6 +558,8 @@ $xaml = @'
                                         Style="{StaticResource DangerButton}"/>
                             </StackPanel>
                         </StackPanel>
+                        <TextBlock x:Name="SourceSizes" Text="Размер папок: вычисление..."
+                                   FontSize="11" Foreground="#FF89B4FA" Margin="0,4,0,0" TextWrapping="Wrap"/>
                         <TextBlock Text="Каждая папка копируется в отдельную подпапку в Files."
                                    FontSize="11" Foreground="#FF6C7086" Margin="0,4,0,0"/>
                     </StackPanel>
@@ -709,6 +711,9 @@ $missingList      = Find 'MissingList'
 $versionTree      = Find 'VersionTree'
 $tabRestore       = Find 'TabRestore'
 $tabVersions      = Find 'TabVersions'
+$tabSettings      = Find 'TabSettings'
+$mainTabs         = Find 'MainTabs'
+$sourceSizes      = Find 'SourceSizes'
 $logBox           = Find 'LogBox'
 $logScroll        = Find 'LogScroll'
 
@@ -729,6 +734,58 @@ function Get-SourcePaths {
     if ($paths.Count -eq 0) { [void]$paths.Add($DefaultSettings.Source) }
     return $paths.ToArray()
 }
+
+$script:sizeJob = $null
+function Format-Size([double]$Bytes) {
+    if ($Bytes -ge 1GB) { return ([math]::Round($Bytes / 1GB, 2)).ToString().Replace('.', ',') + ' ГБ' }
+    if ($Bytes -ge 1MB) { return ([math]::Round($Bytes / 1MB, 1)).ToString().Replace('.', ',') + ' МБ' }
+    if ($Bytes -ge 1KB) { return ([math]::Round($Bytes / 1KB, 1)).ToString().Replace('.', ',') + ' КБ' }
+    return "$([int]$Bytes) Б"
+}
+
+function Update-SourceSizes {
+    $paths = @(Get-SourcePaths)
+    $sourceSizes.Text = 'Размер папок: вычисление...'
+    if ($script:sizeJob -and $script:sizeJob.State -eq 'Running') { return }
+    try {
+        $script:sizeJob = Start-Job -ScriptBlock {
+            param([string[]]$srcs)
+            $lines = [System.Collections.Generic.List[string]]::new()
+            foreach ($s in $srcs) {
+                $stats = Get-ChildItem -LiteralPath $s -File -Recurse -Force -ErrorAction SilentlyContinue |
+                         Measure-Object -Property Length -Sum
+                $name = ($s.TrimEnd('\', '/') -split '[\\/]')[-1]
+                [void]$lines.Add("$name|$($stats.Count)|$($stats.Sum)")
+            }
+            return $lines.ToArray()
+        } -ArgumentList (, $paths)
+    } catch { $sourceSizes.Text = 'Размер папок: недоступно' }
+}
+
+$sizeTimer = New-Object System.Windows.Threading.DispatcherTimer
+$sizeTimer.Interval = [TimeSpan]::FromMilliseconds(500)
+$sizeTimer.Add_Tick({
+    $j = $script:sizeJob
+    if (-not $j -or $j.State -eq 'Running') { return }
+    try {
+        $lines = @(Receive-Job $j)
+        $totalCount = 0; $totalBytes = 0.0
+        $parts = [System.Collections.Generic.List[string]]::new()
+        foreach ($line in $lines) {
+            $p = [string]$line -split '\|', 3
+            if ($p.Count -lt 3) { continue }
+            $cnt = [int]$p[1]; $bytes = [double]$p[2]
+            $totalCount += $cnt; $totalBytes += $bytes
+            [void]$parts.Add("$($p[0]): $cnt файл., $(Format-Size $bytes)")
+        }
+        if ($parts.Count -gt 0) {
+            $sourceSizes.Text = 'Размер папок: ' + ($parts -join '  •  ') + "  |  ВСЕГО: $totalCount файл., $(Format-Size $totalBytes)"
+        } else { $sourceSizes.Text = 'Размер папок: недоступно' }
+    } catch { $sourceSizes.Text = 'Размер папок: недоступно' }
+    try { Remove-Job $j -Force -ErrorAction SilentlyContinue } catch { }
+    $script:sizeJob = $null
+})
+$sizeTimer.Start()
 
 function Set-Status {
     param([string]$Text, [string]$Color = '#FFA6E3A1')
@@ -879,6 +936,7 @@ $btnAddSource.Add_Click({
     }
     [void]$sourceList.Items.Add($p)
     Append-Log "Добавлена папка источника: $p"
+    Update-SourceSizes
 })
 
 $btnRemoveSource.Add_Click({
@@ -889,6 +947,7 @@ $btnRemoveSource.Add_Click({
     }
     [void]$sourceList.Items.Remove($sel)
     Append-Log "Удалена папка источника: $sel"
+    Update-SourceSizes
 })
 
 $btnPickSource.Add_Click({
@@ -896,6 +955,7 @@ $btnPickSource.Add_Click({
     if ($p) {
         $txtSource.Text = $p
         Append-Log "Источник выбран: $p"
+        Update-SourceSizes
         Refresh-Dashboard
         $apply = [System.Windows.MessageBox]::Show(
             "Источник изменён:`n$p`n`nПрименить его для автоматического копирования сейчас?",
@@ -1238,6 +1298,8 @@ $txtLogDays.Text = $settings.LogRetentionDays
 $txtVersionDays.Text = $settings.VersionRetentionDays
 $chkAuto.IsChecked = $settings.AutoRunEnabled
 $chkAutoUpdate.IsChecked = [bool]$settings.AutoUpdateEnabled
+$mainTabs.Add_SelectionChanged({ if ($mainTabs.SelectedItem -eq $tabSettings) { Update-SourceSizes } })
+Update-SourceSizes
 
 $vf = Join-Path $BaseDir 'version.json'
 if (Test-Path -LiteralPath $vf) {
