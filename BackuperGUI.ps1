@@ -1160,6 +1160,43 @@ $autoTimer.Add_Tick({
 })
 $autoTimer.Start()
 
+# ---------- Silent update check on every launch (background job) ----------
+$script:updateCheckJob = $null
+$script:updateCheckDone = $false
+try {
+    $script:updateCheckJob = Start-Job -ScriptBlock {
+        param($base)
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $base 'Update.ps1') `
+            -Check -InstallDir $base 2>&1 | Out-String
+    } -ArgumentList $BaseDir
+} catch { }
+
+$updateTimer = New-Object System.Windows.Threading.DispatcherTimer
+$updateTimer.Interval = [TimeSpan]::FromSeconds(2)
+$updateTimer.Add_Tick({
+    if (-not $script:updateCheckJob -or $script:updateCheckDone) { return }
+    if ($script:updateCheckJob.State -eq 'Running') { return }
+    $script:updateCheckDone = $true
+    try {
+        $res = Receive-Job $script:updateCheckJob
+        $text = ($res | Out-String).Trim()
+        if ($text -match 'Доступна версия\s+(\S+)') {
+            $newVer = $Matches[1]
+            $versionText.Text = "версия $currentVersion  •  доступна $newVer"
+            $versionText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#FFF38BAB')
+            Append-Log "Доступна новая версия $newVer. Нажмите «Проверить обновления» для подробностей."
+            if ($trayIcon) {
+                $trayIcon.ShowBalloonTip(10000, 'Backuper: обновление',
+                    "Доступна версия $newVer", [System.Windows.Forms.ToolTipIcon]::Info)
+            }
+        } else {
+            Append-Log "Проверка обновлений при запуске: $text"
+        }
+    } catch { }
+    try { Remove-Job $script:updateCheckJob -Force -ErrorAction SilentlyContinue } catch { }
+})
+$updateTimer.Start()
+
 # ---------- System tray ----------
 $script:reallyExit = $false
 
