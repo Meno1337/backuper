@@ -1,4 +1,7 @@
 ﻿$ErrorActionPreference = 'Stop'
+$result = Join-Path $env:TEMP 'fix_install_result.txt'
+Remove-Item -LiteralPath $result -Force -ErrorAction SilentlyContinue
+try {
 $pf = 'C:\Program Files (x86)\Backuper'
 $src = '\\Lpu6011-app010\transfer\карпов'
 
@@ -35,5 +38,16 @@ Unregister-ScheduledTask -TaskName 'BackuperWatcher' -Confirm:$false -ErrorActio
 Register-ScheduledTask -TaskName 'BackuperWatcher' -Action $a2 -Trigger $lg -Settings $sw -Principal $pr | Out-Null
 Stop-ScheduledTask -TaskName 'BackuperWatcher' -ErrorAction SilentlyContinue
 Start-ScheduledTask -TaskName 'BackuperWatcher'
+# kill stale watcher processes
+$me = $PID
+Get-CimInstance Win32_Process -Filter "name='powershell.exe'" | Where-Object {
+    $_.ProcessId -ne $me -and $_.CommandLine -like '*Watcher.ps1*'
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 Write-Host 'Tasks fixed and watcher restarted.'
-Write-Host "Watcher action: $((Get-ScheduledTask -TaskName 'BackuperWatcher').Actions.Arguments)"
+$msg = "Watcher args: $((Get-ScheduledTask -TaskName 'BackuperWatcher').Actions.Arguments)"
+Write-Host $msg
+$msg | Set-Content -LiteralPath $result -Encoding UTF8
+} catch {
+    $_.Exception.Message | Set-Content -LiteralPath $result -Encoding UTF8
+}
