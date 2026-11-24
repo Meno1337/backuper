@@ -151,6 +151,33 @@ if ($makeShortcut) {
 }
 
 Write-Output '[PROGRESS:80] Задачи планировщика зарегистрированы'
+
+# --- register in "Apps & features" so Windows can uninstall it ---
+$uninstallKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper'
+New-Item -Path $uninstallKey -Force | Out-Null
+Set-ItemProperty -Path $uninstallKey -Name 'DisplayName' -Value 'Backuper' -Force
+Set-ItemProperty -Path $uninstallKey -Name 'DisplayVersion' -Value '1.0.0' -Force
+Set-ItemProperty -Path $uninstallKey -Name 'Publisher' -Value 'Backuper' -Force
+Set-ItemProperty -Path $uninstallKey -Name 'DisplayIcon' -Value (Join-Path $installDir 'app_icon_v2.ico') -Force
+Set-ItemProperty -Path $uninstallKey -Name 'UninstallString' -Value ('"' + (Join-Path $installDir 'BackuperUninstaller.exe') + '"') -Force
+Set-ItemProperty -Path $uninstallKey -Name 'NoModify' -Value 1 -Force
+Set-ItemProperty -Path $uninstallKey -Name 'NoRepair' -Value 1 -Force
+
+# --- Start menu shortcuts ---
+try {
+    $startMenu = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Backuper'
+    New-Item -ItemType Directory -Path $startMenu -Force | Out-Null
+    $ws = New-Object -ComObject WScript.Shell
+    $sc = $ws.CreateShortcut((Join-Path $startMenu 'Backuper.lnk'))
+    $sc.TargetPath = Join-Path $installDir 'Backuper.exe'
+    $sc.IconLocation = Join-Path $installDir 'app_icon_v2.ico'
+    $sc.Save()
+    $sc2 = $ws.CreateShortcut((Join-Path $startMenu 'Удалить Backuper.lnk'))
+    $sc2.TargetPath = Join-Path $installDir 'BackuperUninstaller.exe'
+    $sc2.IconLocation = Join-Path $installDir 'app_icon_v2.ico'
+    $sc2.Save()
+} catch { }
+
 Start-ScheduledTask -TaskName 'BackuperWatcher' -ErrorAction SilentlyContinue
 Write-Output '[PROGRESS:100] Установка завершена'
 Write-Host ''

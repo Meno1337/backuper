@@ -41,7 +41,10 @@ Write-Output '[PROGRESS:25] Задачи удалены'
 Write-Output '[PROGRESS:40] Удаление ярлыка...'
 $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Backuper.lnk'
 if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue }
-Write-Output '[PROGRESS:55] Ярлык удалён'
+$startMenu = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Backuper'
+if (Test-Path -LiteralPath $startMenu) { Remove-Item -LiteralPath $startMenu -Recurse -Force -ErrorAction SilentlyContinue }
+Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper' -Recurse -Force -ErrorAction SilentlyContinue
+Write-Output '[PROGRESS:55] Ярлыки и регистрация удалены'
 
 Write-Output '[PROGRESS:70] Удаление файлов программы...'
 if (Test-Path -LiteralPath $InstallDir) {
