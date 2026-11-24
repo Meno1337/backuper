@@ -11,16 +11,6 @@ public static class Win {
 
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# create app_icon.png from the real icon
-$ico = New-Object System.Drawing.Icon((Join-Path $dir 'app_icon_v2.ico'))
-$bmp = $ico.ToBitmap()
-$big = New-Object System.Drawing.Bitmap(128, 128)
-$g = [System.Drawing.Graphics]::FromImage($big)
-$g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-$g.DrawImage($bmp, 0, 0, 128, 128)
-$g.Dispose(); $big.Save((Join-Path $dir 'app_icon.png'), [System.Drawing.Imaging.ImageFormat]::Png)
-$big.Dispose(); $bmp.Dispose(); $ico.Dispose()
-
 # screenshot ONLY the Backuper window
 $env:BACKUPER_SKIP_ELEVATE = '1'
 $proc = Start-Process powershell.exe -ArgumentList @(
