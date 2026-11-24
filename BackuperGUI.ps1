@@ -348,7 +348,13 @@ $xaml = @'
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                         Margin="0,0,16,0">
-                <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="#FFA6E3A1" Margin="0,0,8,0"/>
+                <TextBlock x:Name="VersionText" Text="версия 1.3.0" FontSize="12"
+                           Foreground="#FF6C7086" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <Button x:Name="BtnCheckUpdate" Content="⟳  Обновить" Width="110" FontSize="12"
+                        Style="{StaticResource WindowButton}"
+                        ToolTip="Проверить обновления на GitHub"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="#FFA6E3A1" Margin="12,0,8,0"/>
                 <TextBlock x:Name="StatusText" Text="Готово" FontSize="13" VerticalAlignment="Center"/>
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
@@ -624,14 +630,6 @@ $xaml = @'
                                 Style="{StaticResource InfoButton}"/>
                     </StackPanel>
 
-                    <TextBlock Grid.Row="8" Grid.Column="0" Text="Обновление:" VerticalAlignment="Center"
-                               Foreground="#FFA9ADC1"/>
-                    <StackPanel Grid.Row="8" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,4">
-                        <Button x:Name="BtnCheckUpdate" Content="⬆  Проверить обновления" Width="220"
-                                Style="{StaticResource InfoButton}"/>
-                        <TextBlock Text="версия 1.0.0" x:Name="VersionText" Margin="12,0,0,0"
-                                   VerticalAlignment="Center" Foreground="#FF6C7086"/>
-                    </StackPanel>
                 </Grid>
             </TabItem>
         </TabControl>
