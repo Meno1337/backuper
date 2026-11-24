@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
+using System.Text;
 using System.Windows.Forms;
 
 class Program
@@ -17,15 +18,19 @@ class Program
 
         string work = Path.Combine(Path.GetTempPath(), "backuper_uninstall_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(work);
+        string dlLog = Path.Combine(Path.GetTempPath(), "backuper_download.log");
+        File.WriteAllText(dlLog, "", Encoding.UTF8);
         bool ready = false;
         try
         {
             string zip = Path.Combine(work, "src.zip");
+            File.AppendAllText(dlLog, "Скачивание архива программы с GitHub...\n", Encoding.UTF8);
             using (WebClient wc = new WebClient())
             {
                 wc.Headers.Add("User-Agent", "Backuper-Uninstaller");
                 wc.DownloadFile("https://github.com/" + Repo + "/archive/refs/heads/main.zip", zip);
             }
+            File.AppendAllText(dlLog, "Архив скачан (" + new FileInfo(zip).Length + " байт). Распаковка...\n", Encoding.UTF8);
             ZipFile.ExtractToDirectory(zip, work);
             string[] roots = Directory.GetDirectories(work, "backuper-*");
             if (roots.Length > 0) work = roots[0];

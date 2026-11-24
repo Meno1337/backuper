@@ -240,6 +240,12 @@ function Append-Log {
     $logScroll.ScrollToEnd()
 }
 Append-Log "Backuper Uninstaller готов. $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+$dlLog = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_download.log'
+if (Test-Path -LiteralPath $dlLog) {
+    foreach ($line in (Get-Content -LiteralPath $dlLog -Encoding UTF8 -ErrorAction SilentlyContinue)) {
+        if ($line) { Append-Log "СКАЧИВАНИЕ: $line" }
+    }
+}
 
 $btnWindowMin.Add_Click({ $window.WindowState = [System.Windows.WindowState]::Minimized })
 $btnWindowMax.Add_Click({
@@ -269,7 +275,9 @@ $btnUninstall.Add_Click({
     Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue
     $script:unProc = Start-Process powershell.exe -ArgumentList $args -PassThru `
         -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden
-    $script:unOut = $out; $script:unErr = $err; $script:unLastLen = 0
+    $script:unOut = $out; $script:unErr = $err
+    $script:unLive = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_uninstall_live.log'
+    $script:unLastLen = 0
     $progress.Value = 0
     $progressText.Text = 'Удаление выполняется...'
 
@@ -279,7 +287,7 @@ $btnUninstall.Add_Click({
         $script:unTimer.Add_Tick({
             $p = $script:unProc
             if (-not $p) { return }
-            $text = Get-Content -LiteralPath $script:unOut -Raw -ErrorAction SilentlyContinue
+            $text = Get-Content -LiteralPath $script:unLive -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
             if ($text -and $text.Length -gt $script:unLastLen) {
                 $newPart = $text.Substring($script:unLastLen)
                 $script:unLastLen = $text.Length
@@ -294,7 +302,8 @@ $btnUninstall.Add_Click({
             if (-not $p.HasExited) { return }
             $script:unTimer.Stop()
             $btnUninstall.IsEnabled = $true
-            if ($p.ExitCode -ne 0) {
+            $finalText = Get-Content -LiteralPath $script:unLive -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+            if ($finalText -notmatch '\[PROGRESS:100\]') {
                 Append-Log (Get-Content -LiteralPath $script:unErr -Raw -ErrorAction SilentlyContinue)
                 $progressText.Text = 'Ошибка удаления'
                 [System.Windows.MessageBox]::Show('Ошибка при удалении. См. лог.', 'Ошибка', 'OK', 'Error')

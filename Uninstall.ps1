@@ -24,7 +24,13 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 
 $ErrorActionPreference = 'Stop'
-Write-Output '[PROGRESS:5] Удаление задач планировщика...'
+$liveLog = Join-Path ([System.IO.Path]::GetTempPath()) 'backuper_uninstall_live.log'
+Remove-Item -LiteralPath $liveLog -Force -ErrorAction SilentlyContinue
+function Live {
+    param([string]$Message)
+    Add-Content -LiteralPath $liveLog -Value $Message -Encoding UTF8
+}
+Live '[PROGRESS:5] Удаление задач планировщика...'
 
 # stop running program processes (but not this one)
 $me = $PID
@@ -36,32 +42,32 @@ Get-CimInstance Win32_Process -Filter "name='powershell.exe'" | Where-Object {
 foreach ($t in @('BackuperHourly', 'BackuperWatcher', 'BackuperLogCleanup')) {
     Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
 }
-Write-Output '[PROGRESS:25] Задачи удалены'
+Live '[PROGRESS:25] Задачи удалены'
 
-Write-Output '[PROGRESS:40] Удаление ярлыка...'
+Live '[PROGRESS:40] Удаление ярлыка...'
 $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Backuper.lnk'
 if (Test-Path -LiteralPath $lnk) { Remove-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue }
 $startMenu = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Backuper'
 if (Test-Path -LiteralPath $startMenu) { Remove-Item -LiteralPath $startMenu -Recurse -Force -ErrorAction SilentlyContinue }
 Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Backuper' -Recurse -Force -ErrorAction SilentlyContinue
-Write-Output '[PROGRESS:55] Ярлыки и регистрация удалены'
+Live '[PROGRESS:55] Ярлыки и регистрация удалены'
 
-Write-Output '[PROGRESS:70] Удаление файлов программы...'
+Live '[PROGRESS:70] Удаление файлов программы...'
 if (Test-Path -LiteralPath $InstallDir) {
     if ($KeepData) {
         $keep = @('Files', 'Logs', 'Versions')
         Get-ChildItem -LiteralPath $InstallDir -Force | Where-Object {
             $keep -notcontains $_.Name -and $_.Name -ne 'settings.json'
         } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Output '[PROGRESS:90] Файлы программы удалены, данные сохранены'
+        Live '[PROGRESS:90] Файлы программы удалены, данные сохранены'
     } else {
         Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Output '[PROGRESS:90] Папка программы удалена'
+        Live '[PROGRESS:90] Папка программы удалена'
     }
 } else {
-    Write-Output '[PROGRESS:90] Папка программы не найдена'
+    Live '[PROGRESS:90] Папка программы не найдена'
 }
 
-Write-Output '[PROGRESS:100] Удаление завершено'
+Live '[PROGRESS:100] Удаление завершено'
 Write-Host "Backuper удалён из: $InstallDir"
 if (-not $Silent) { Read-Host 'Нажмите Enter для выхода' }
