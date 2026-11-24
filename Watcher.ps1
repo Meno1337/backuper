@@ -17,8 +17,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Path $Destination -Force | Out-Null
-New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
-
+# fallback when the task runs without admin rights (Program Files is read-only)
+try {
+    New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction Stop | Out-Null
+    $probe = Join-Path $LogDir ('.write_test_' + [guid]::NewGuid().ToString('N'))
+    [System.IO.File]::WriteAllText($probe, '')
+    Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+} catch {
+    $LogDir = Join-Path $env:LOCALAPPDATA 'Backuper\Logs'
+    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+}
 $logFile = Join-Path $LogDir ("watcher_" + (Get-Date -Format 'yyyyMMdd') + ".log")
 function Log {
     param([string]$Message)

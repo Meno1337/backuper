@@ -18,7 +18,20 @@ $logFile   = Join-Path $LogDir "backup_$timestamp.log"
 $missingFile = Join-Path $LogDir "missing_$timestamp.txt"
 
 New-Item -ItemType Directory -Path $Destination -Force | Out-Null
-New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+
+# If the panel is running without admin rights, Program Files\Logs is read-only.
+# Fall back to a user-writable location instead of failing the whole copy.
+try {
+    New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction Stop | Out-Null
+    $probe = Join-Path $LogDir ('.write_test_' + [guid]::NewGuid().ToString('N'))
+    [System.IO.File]::WriteAllText($probe, '')
+    Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+} catch {
+    $LogDir = Join-Path $env:LOCALAPPDATA 'Backuper\Logs'
+    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+    $logFile = Join-Path $LogDir "backup_$timestamp.log"
+    $missingFile = Join-Path $LogDir "missing_$timestamp.txt"
+}
 
 $messages = [System.Collections.Generic.List[string]]::new()
 function Write-Log {

@@ -22,7 +22,18 @@ $logFile   = Join-Path $LogDir "backup_$timestamp.log"
 $missingFile = Join-Path $LogDir "missing_$timestamp.txt"
 
 New-Item -ItemType Directory -Path $Destination -Force | Out-Null
-New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+# scheduled tasks run non-elevated; Program Files logs are read-only then
+try {
+    New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction Stop | Out-Null
+    $probe = Join-Path $LogDir ('.write_test_' + [guid]::NewGuid().ToString('N'))
+    [System.IO.File]::WriteAllText($probe, '')
+    Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+} catch {
+    $LogDir = Join-Path $env:LOCALAPPDATA 'Backuper\Logs'
+    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+    $logFile = Join-Path $LogDir "backup_$timestamp.log"
+    $missingFile = Join-Path $LogDir "missing_$timestamp.txt"
+}
 
 function Write-Log {
     param([string]$Message)
