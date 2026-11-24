@@ -9,8 +9,14 @@ class Program
 {
     const string Repo = "Meno1337/backuper";
 
+    static string lastError = "";
+
     static void Main()
     {
+        // GitHub requires TLS 1.2; .NET Framework defaults to TLS 1.0
+        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+        ServicePointManager.Expect100Continue = false;
+
         string work = Path.Combine(Path.GetTempPath(), "backuper_setup_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(work);
         bool ready = false;
@@ -29,7 +35,7 @@ class Program
             if (roots.Length > 0) work = roots[0];
             ready = File.Exists(Path.Combine(work, "InstallerGUI.ps1"));
         }
-        catch { }
+        catch (Exception ex) { lastError = ex.Message; }
 
         // Fallback: files next to this exe (for local/offline use)
         if (!ready)
@@ -38,7 +44,8 @@ class Program
             if (File.Exists(Path.Combine(local, "InstallerGUI.ps1"))) work = local;
             else
             {
-                MessageBox.Show("Не удалось загрузить файлы с GitHub и не найдены локальные файлы программы.",
+                MessageBox.Show("Не удалось загрузить файлы с GitHub и не найдены локальные файлы программы." +
+                    (String.IsNullOrEmpty(lastError) ? "" : "\n\nПричина: " + lastError),
                     "Backuper Setup", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
