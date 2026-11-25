@@ -19,15 +19,22 @@ function Get-ArchiveEntries {
     if (-not $seven -or -not (Test-Path -LiteralPath $Archive)) { return @() }
     $lines = & $seven l -slt $Archive 2>&1
     $result = [System.Collections.Generic.List[object]]::new()
+    $blocks = [System.Collections.Generic.List[object]]::new()
     $current = $null
     foreach ($line in $lines) {
-        if ($line -match '^Path\s*=\s*(.+)$') { $current = [PSCustomObject]@{ Path = $Matches[1]; Size = 0 } }
-        elseif ($current -and $line -match '^Size\s*=\s*(\d+)$') {
+        if ($line -match '^Path\s*=\s*(.+)$') {
+            if ($current) { [void]$blocks.Add($current) }
+            $current = [PSCustomObject]@{ Path = $Matches[1]; Size = [int64]0; IsDir = $false }
+        } elseif ($current -and $line -match '^Size\s*=\s*(\d+)$') {
             $current.Size = [int64]$Matches[1]
-            if ($current.Size -gt 0 -and $current.Path -notmatch '^\s*$') {
-                [void]$result.Add($current)
-                $current = $null
-            }
+        } elseif ($current -and $line -match '^Attributes\s*=\s*(\S+)') {
+            if ($Matches[1] -match '^D') { $current.IsDir = $true }
+        }
+    }
+    if ($current) { [void]$blocks.Add($current) }
+    foreach ($b in $blocks) {
+        if (-not $b.IsDir -and $b.Path) {
+            [void]$result.Add([PSCustomObject]@{ Path = $b.Path; Size = $b.Size })
         }
     }
     return $result.ToArray()

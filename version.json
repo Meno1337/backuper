@@ -1,18 +1,5 @@
 ﻿{
-  "Version": "1.4.22-beta",
-  "RepoUrl": "https://github.com/Meno1337/backuper",
-  "Notes": "Репозиторий с релизами. Для обновлений создайте Release с ZIP-архивом файлов программы."
+    "Version":  "1.4.23-beta",
+    "RepoUrl":  "https://github.com/Meno1337/backuper",
+    "Notes":  "Репозиторий с релизами. Для обновлений создайте Release с ZIP-архивом файлов программы."
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
