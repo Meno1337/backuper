@@ -33,6 +33,7 @@ $BackupCore   = Join-Path $BaseDir 'BackupCore.ps1'
 $VersionsModule = Join-Path $BaseDir 'Versions.ps1'
 $FolderPickerModule = Join-Path $BaseDir 'FolderPicker.ps1'
 $Compress7zModule   = Join-Path $BaseDir 'Compress7z.ps1'
+$Archive7zModule    = Join-Path $BaseDir 'Archive7z.ps1'
 $SettingsFile = Join-Path $BaseDir 'settings.json'
 $UserRoot     = Join-Path $env:LOCALAPPDATA 'Backuper'
 $UserSettingsFile = Join-Path $UserRoot 'settings.json'
@@ -40,6 +41,7 @@ $IconFile     = Join-Path $BaseDir 'app_icon_v2.ico'
 . $VersionsModule
 . $FolderPickerModule
 . $Compress7zModule
+. $Archive7zModule
 
 # ---------- Settings ----------
 $DefaultSettings = [PSCustomObject]@{
@@ -821,8 +823,9 @@ function Update-SourceSizes {
     $sourceSizes.Text = 'Размер папок: вычисление...'
     if ($script:sizeJob -and $script:sizeJob.State -eq 'Running') { return }
     try {
+        $archiveMode = [bool]$chkCompress.IsChecked
         $script:sizeJob = Start-Job -ScriptBlock {
-            param([string[]]$folderPairs)
+            param([string[]]$folderPairs, [bool]$archiveMode)
             Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -836,6 +839,17 @@ public static class CompSize {
                 $p = $pair -split '\|', 2
                 $name = $p[0]; $path = $p[1]
                 $count = 0; $logical = 0.0; $compressed = 0.0
+                $indexFile = Join-Path (Split-Path -Parent $path) ((Split-Path -Leaf $path) + '.index.json')
+                if ($archiveMode -and (Test-Path -LiteralPath $indexFile)) {
+                    try {
+                        $idx = Get-Content -LiteralPath $indexFile -Raw -Encoding UTF8 | ConvertFrom-Json
+                        foreach ($p in $idx.PSObject.Properties) {
+                            $count++
+                            $v = [string]$p.Value -split ':', 2
+                            if ($v.Length -gt 0) { $logical += [double]$v[0] }
+                        }
+                    } catch { }
+                } else {
                 Get-ChildItem -LiteralPath $path -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
                     $count++
                     $logical += $_.Length
@@ -844,12 +858,13 @@ public static class CompSize {
                     if ($lo -eq 0xFFFFFFFF -and $hi -eq 0xFFFFFFFF) { $compressed += $_.Length }
                     else { $compressed += ([int64]$hi * 4294967296 + $lo) }
                 }
+                }
                 $archive = Join-Path (Split-Path -Parent $path) ((Split-Path -Leaf $path) + '.7z')
                 if (Test-Path -LiteralPath $archive) { $compressed = (Get-Item -LiteralPath $archive).Length }
                 [void]$lines.Add("$name|$count|$logical|$compressed")
             }
             return $lines.ToArray()
-        } -ArgumentList (, $pairs.ToArray())
+        } -ArgumentList (, $pairs.ToArray()), $archiveMode
     } catch { $sourceSizes.Text = 'Размер папок: недоступно' }
 }
 
@@ -899,6 +914,28 @@ function Get-MissingFiles {
     param([string]$Src, [string]$Dst)
     $res = [System.Collections.Generic.List[string]]::new()
     $used = @{}
+
+    if ($chkCompress.IsChecked) {
+        foreach ($s in @(Get-SourcePaths)) {
+            $name = Get-SourceFolderName $s
+            if ($used.ContainsKey($name)) { $used[$name]++; $name = "$name-$($used[$name])" } else { $used[$name] = 1 }
+            $idx = Get-IndexPath -DestRoot $Dst -FolderName $name
+            if (-not (Test-Path -LiteralPath $idx)) { continue }
+            $sourceSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+            if (Test-Path -LiteralPath $s) {
+                Get-ChildItem -LiteralPath $s -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                    [void]$sourceSet.Add($_.FullName.Substring($s.Length).TrimStart('\', '/'))
+                }
+            }
+            try {
+                $raw = Get-Content -LiteralPath $idx -Raw -Encoding UTF8 | ConvertFrom-Json
+                foreach ($p in $raw.PSObject.Properties) {
+                    if (-not $sourceSet.Contains($p.Name)) { [void]$res.Add("$name\$($p.Name)") }
+                }
+            } catch { }
+        }
+        return $res.ToArray()
+    }
     foreach ($s in @(Get-SourcePaths)) {
         $name = Get-SourceFolderName $s
         if ($used.ContainsKey($name)) { $used[$name]++; $name = "$name-$($used[$name])" } else { $used[$name] = 1 }
@@ -923,7 +960,22 @@ function Refresh-Dashboard {
     $dst = $txtDest.Text
     $n = 0
     $items = [System.Collections.Generic.List[object]]::new()
-    if (Test-Path -LiteralPath $dst) {
+    if ($chkCompress.IsChecked) {
+        $usedNames = @{}
+        foreach ($s in @(Get-SourcePaths)) {
+            $name = Get-SourceFolderName $s
+            if ($usedNames.ContainsKey($name)) { $usedNames[$name]++; $name = "$name-$($usedNames[$name])" } else { $usedNames[$name] = 1 }
+            $idx = Get-IndexPath -DestRoot $dst -FolderName $name
+            if (-not (Test-Path -LiteralPath $idx)) { continue }
+            try {
+                $raw = Get-Content -LiteralPath $idx -Raw -Encoding UTF8 | ConvertFrom-Json
+                foreach ($p in $raw.PSObject.Properties) {
+                    $n++
+                    [void]$items.Add([PSCustomObject]@{ Name = "$name\$($p.Name)"; Icon = [char]0x25A1; Color = '#FF89B4FA' })
+                }
+            } catch { }
+        }
+    } elseif (Test-Path -LiteralPath $dst) {
         Get-ChildItem -LiteralPath $dst -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
             $n++
             $rel = $_.FullName.Substring($dst.Length).TrimStart('\', '/')
@@ -1178,11 +1230,30 @@ $compressTimer.Add_Tick({
 $btnCompressNow.Add_Click({
     $btnCompressNow.IsEnabled = $false
     Append-Log 'Архивация копий в 7z запущена...'
+    $srcPaths = @(Get-SourcePaths)
     $script:compressJob = Start-Job -ScriptBlock {
-        param([string]$module, [string]$dest)
+        param([string]$module, [string]$dest, [string[]]$srcs)
         . $module
-        New-7zArchives -DestRoot $dest
-    } -ArgumentList $Compress7zModule, $txtDest.Text
+        $out = [System.Collections.Generic.List[string]]::new()
+        $used = @{}
+        foreach ($s in $srcs) {
+            $name = ($s.TrimEnd('\', '/') -split '[\\/]')[-1]
+            if ($used.ContainsKey($name)) { $used[$name]++; $name = "$name-$($used[$name])" } else { $used[$name] = 1 }
+            $archive = Get-ArchivePath -DestRoot $dest -FolderName $name
+            $idxFile = Get-IndexPath -DestRoot $dest -FolderName $name
+            [void]$out.Add("Архивация: $name")
+            foreach ($l in @(Update-ArchiveFromFolder -Archive $archive -SourceFolder $s)) { [void]$out.Add("  $l") }
+            $idx = [ordered]@{}
+            if (Test-Path -LiteralPath $s) {
+                Get-ChildItem -LiteralPath $s -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                    $rel = $_.FullName.Substring($s.Length).TrimStart('\', '/')
+                    $idx[$rel] = "$($_.Length):$($_.LastWriteTimeUtc.Ticks)"
+                }
+            }
+            $idx | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $idxFile -Encoding UTF8
+        }
+        return $out.ToArray()
+    } -ArgumentList $Archive7zModule, $txtDest.Text, $srcPaths
     $compressTimer.Start()
     $btnCompressNow.IsEnabled = $true
 })
@@ -1238,15 +1309,20 @@ $btnRestoreSelected.Add_Click({
             if ((Get-SourceFolderName $s) -eq $folderName) { $src = $s; break }
         }
         $target = if ($relPath) { Join-Path $src $relPath } else { $src }
-        $backupFile = Join-Path $txtDest.Text ([string]$sel)
         try {
-            if (-not (Test-Path -LiteralPath $backupFile)) {
-                Append-Log "НЕ НАЙДЕН ФАЙЛ КОПИИ: $backupFile"
-                continue
-            }
             $dir = Split-Path -Parent $target
             if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-            Copy-Item -LiteralPath $backupFile -Destination $target -Force
+            if ($chkCompress.IsChecked) {
+                $archive = Get-ArchivePath -DestRoot $txtDest.Text -FolderName $folderName
+                Extract-ArchiveFile -Archive $archive -EntryPath $relPath -TargetPath $target | Out-Null
+            } else {
+                $backupFile = Join-Path $txtDest.Text ([string]$sel)
+                if (-not (Test-Path -LiteralPath $backupFile)) {
+                    Append-Log "НЕ НАЙДЕН ФАЙЛ КОПИИ: $backupFile"
+                    continue
+                }
+                Copy-Item -LiteralPath $backupFile -Destination $target -Force
+            }
             $done++
             Append-Log "ВОССТАНОВЛЕНО: $sel → $target"
         } catch {
@@ -1326,7 +1402,14 @@ $btnRestoreVersionToServer.Add_Click({
     foreach ($v in $items) {
         $src = Join-Path $v.SnapshotPath $v.Name
         if (-not (Test-Path -LiteralPath $src)) { $src = Join-Path $txtDest.Text $v.Name }
-        $target = Join-Path $txtSource.Text $v.Name
+        $vparts = [string]$v.Name -split '[\\/]', 2
+        $folderName = $vparts[0]
+        $relPath = if ($vparts.Count -gt 1) { $vparts[1] } else { [string]$v.Name }
+        $srcRoot = $txtSource.Text
+        foreach ($s in @(Get-SourcePaths)) {
+            if ((Get-SourceFolderName $s) -eq $folderName) { $srcRoot = $s; break }
+        }
+        $target = Join-Path $srcRoot $relPath
         try {
             if (-not (Test-Path -LiteralPath $src)) { Append-Log "НЕТ ФАЙЛА ВЕРСИИ: $src"; continue }
             $dir = Split-Path -Parent $target
@@ -1417,7 +1500,8 @@ $btnInstallTask.Add_Click({
         $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
             -Argument ("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$dir\Backup.ps1`" " +
                 "-Sources `"" + ((@(Get-SourcePaths)) -join '|') + "`" " +
-                " -Destination `"$($txtDest.Text)`" -LogDir `"$($txtLogs.Text)`" -LogRetentionDays $days -VersionsDir `"$vdir`"") `
+                " -Destination `"$($txtDest.Text)`" -LogDir `"$($txtLogs.Text)`" -LogRetentionDays $days -VersionsDir `"$vdir`"" +
+                $(if ($chkCompress.IsChecked) { ' -Compress' } else { '' })) `
             -WorkingDirectory $dir
         $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddHours($hours)) `
             -RepetitionInterval (New-TimeSpan -Hours $hours) -RepetitionDuration (New-TimeSpan -Days 3650)

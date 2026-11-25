@@ -10,6 +10,7 @@ param(
     [string]$Destination = 'C:\Users\karpovD\Desktop\backuper\Files',
     [string]$LogDir      = 'C:\Users\karpovD\Desktop\backuper\Logs',
     [string]$VersionsDir = 'C:\Users\karpovD\Desktop\backuper\Versions',
+    [switch]$Compress,
     [int]$LogRetentionDays = 90
 )
 
@@ -48,6 +49,7 @@ $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $core,
              '-VersionsDir', $VersionsDir,
              '-LogRetentionDays', "$LogRetentionDays", '-Sources')
 $argList += $Sources
+if ($Compress) { $argList += '-Compress' }
 $out = & powershell.exe @argList 2>&1 | Out-String
 
 try {

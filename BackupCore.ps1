@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
-    Core backup logic. Supports multiple sources, each copied into its own
-    named subfolder under Destination. Returns structured JSON.
+    Backup engine. Plain mode copies files into named folders; archive mode
+    stores each source as a single .7z plus a small JSON index.
 #>
 
 param(
@@ -15,23 +15,22 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+try { . (Join-Path $PSScriptRoot 'Archive7z.ps1') } catch { }
 try { . (Join-Path $PSScriptRoot 'Versions.ps1') } catch { }
-# -File in PowerShell 5.1 cannot bind several values to one array parameter;
-# callers pass a single pipe-separated string instead.
-$expandedSources = [System.Collections.Generic.List[string]]::new()
+
+$sourcesList = [System.Collections.Generic.List[string]]::new()
 foreach ($s in @($Sources)) {
-    foreach ($p in ([string]$s -split '\|')) { if ($p.Trim()) { [void]$expandedSources.Add($p.Trim()) } }
+    foreach ($p in ([string]$s -split '\|')) { if ($p.Trim()) { [void]$sourcesList.Add($p.Trim()) } }
 }
-$Sources = $expandedSources.ToArray()
-if ($Sources.Count -eq 0) {
-    if ($Source) { $Sources = @($Source) }
-    else { $Sources = @('\\Lpu6011-app010\transfer\карпов') }
+if ($sourcesList.Count -eq 0) {
+    if ($Source) { [void]$sourcesList.Add($Source) }
+    else { [void]$sourcesList.Add('\\Lpu6011-app010\transfer\карпов') }
 }
+$Sources = $sourcesList.ToArray()
 
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$logFile   = Join-Path $LogDir "backup_$timestamp.log"
+$logFile = Join-Path $LogDir "backup_$timestamp.log"
 $missingFile = Join-Path $LogDir "missing_$timestamp.txt"
-
 $userRoot = Join-Path $env:LOCALAPPDATA 'Backuper'
 function Test-Writable([string]$dir) {
     try {
@@ -45,11 +44,11 @@ function Test-Writable([string]$dir) {
 if (-not (Test-Writable $Destination)) { $Destination = Join-Path $userRoot 'Files' }
 try {
     New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction Stop | Out-Null
-    $probe = Join-Path $LogDir ('.write_test_' + [guid]::NewGuid().ToString('N'))
+    $probe = Join-Path $LogDir ('.w_' + [guid]::NewGuid().ToString('N'))
     [System.IO.File]::WriteAllText($probe, '')
     Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
 } catch {
-    $LogDir = Join-Path $env:LOCALAPPDATA 'Backuper\Logs'
+    $LogDir = Join-Path $userRoot 'Logs'
     New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
     $logFile = Join-Path $LogDir "backup_$timestamp.log"
     $missingFile = Join-Path $LogDir "missing_$timestamp.txt"
@@ -63,111 +62,115 @@ function Write-Log {
     [void]$messages.Add($line)
     Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8
 }
-
 function Get-SourceName([string]$path) {
-    $trimmed = $path.TrimEnd('\', '/')
-    $name = ($trimmed -split '[\\/]')[-1]
+    $name = ($path.TrimEnd('\', '/') -split '[\\/]')[-1]
     if (-not $name) { $name = 'source' }
-    $name = $name -replace '[<>:"|?*]', '_'
-    return $name
+    return ($name -replace '[<>:"|?*]', '_')
 }
+function Get-FileKey($f) { return "$($f.Length):$($f.LastWriteTimeUtc.Ticks)" }
 
 $result = [PSCustomObject]@{
-    Ok           = $false
-    Source       = ($Sources -join '; ')
-    Destination  = $Destination
-    Copied       = 0
-    MissingCount = 0
-    Missing      = @()
-    LogFile      = $logFile
-    MissingFile  = $missingFile
-    Messages     = $messages
-    Error        = ''
+    Ok = $false; Sources = ($Sources -join '; '); Destination = $Destination
+    Copied = 0; MissingCount = 0; Missing = @(); LogFile = $logFile
+    MissingFile = $missingFile; Messages = $messages; Error = ''
 }
 
 try {
-    Write-Log "=== BACKUP START ==="
-    Write-Log "Sources:     $($Sources.Count)"
-    foreach ($s in $Sources) { Write-Log "  - $s" }
-    Write-Log "Destination: $Destination"
-
-    $usedNames = @{}
+    Write-Log "=== BACKUP START ($($Sources.Count) source(s), archive=$Compress) ==="
+    $used = @{}
     $allMissing = [System.Collections.Generic.List[string]]::new()
 
     foreach ($src in $Sources) {
-        if (-not (Test-Path -LiteralPath $src)) {
-            Write-Log "WARNING: source not accessible, skipped: $src"
-            continue
-        }
-        $folderName = Get-SourceName $src
-        if ($usedNames.ContainsKey($folderName)) {
-            $usedNames[$folderName]++
-            $folderName = "$folderName-$($usedNames[$folderName])"
-        } else { $usedNames[$folderName] = 1 }
+        if (-not (Test-Path -LiteralPath $src)) { Write-Log "WARNING: недоступен $src"; continue }
+        $name = Get-SourceName $src
+        if ($used.ContainsKey($name)) { $used[$name]++; $name = "$name-$($used[$name])" } else { $used[$name] = 1 }
 
-        $target = Join-Path $Destination $folderName
-        New-Item -ItemType Directory -Path $target -Force | Out-Null
-        Write-Log "[$folderName] $src -> $target"
-
-        # keep a version of every change (added / changed / deleted)
-        try {
-            $snap = New-VersionSnapshot -Source $src -Destination $target -VersionsDir $VersionsDir
-            if ($snap) { Write-Log "[$folderName] сохранена версия изменений" }
-        } catch { Write-Log "[$folderName] ошибка версии: $($_.Exception.Message)" }
-
-        $rbArgs = @($src, $target, '/E', '/COPY:DAT', '/R:2', '/W:3',
-                    '/NP', '/NFL', '/NDL', "/LOG+:$logFile")
-        $rcOutput = & robocopy @rbArgs 2>&1
-        $rcCode = $LASTEXITCODE
-        if ($rcCode -ge 8) {
-            Write-Log "[$folderName] robocopy error ($rcCode); skipped"
-            continue
-        }
-        # robocopy summary labels are localized, so count files in the target instead
-        $copiedHere = @(Get-ChildItem -LiteralPath $target -File -Recurse -Force -ErrorAction SilentlyContinue).Count
-        $result.Copied += $copiedHere
-        Write-Log "[$folderName] $copiedHere file(s) in copy"
-
-        # missing files = present in copy but gone from this source
-        $sourceSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $currentFiles = @{}
         Get-ChildItem -LiteralPath $src -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
-            [void]$sourceSet.Add($_.FullName.Substring($src.Length).TrimStart('\', '/'))
+            $rel = $_.FullName.Substring($src.Length).TrimStart('\', '/')
+            $currentFiles[$rel] = $_
         }
-        Get-ChildItem -LiteralPath $target -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
-            $rel = $_.FullName.Substring($target.Length).TrimStart('\', '/')
-            if (-not $sourceSet.Contains($rel)) { [void]$allMissing.Add("$folderName\$rel") }
-        }
-    }
 
-    if ($Compress) {
-        try {
-            . (Join-Path $PSScriptRoot 'Compress7z.ps1')
-            $archLines = @(New-7zArchives -DestRoot $Destination)
-            foreach ($al in $archLines) { Write-Log $al }
-            Write-Log 'Архивы 7z обновлены'
-        } catch { Write-Log "Ошибка архивации 7z: $($_.Exception.Message)" }
+        if ($Compress) {
+            $archive = Get-ArchivePath -DestRoot $Destination -FolderName $name
+            $indexFile = Get-IndexPath -DestRoot $Destination -FolderName $name
+            $oldIndex = @{}
+            if (Test-Path -LiteralPath $indexFile) {
+                try {
+                    $raw = Get-Content -LiteralPath $indexFile -Raw -Encoding UTF8 | ConvertFrom-Json
+                    foreach ($p in $raw.PSObject.Properties) { $oldIndex[$p.Name] = [string]$p.Value }
+                } catch { }
+            }
+
+            # previous versions for changed/deleted files
+            $snapDir = Join-Path $VersionsDir $timestamp
+            $changed = @()
+            foreach ($rel in $currentFiles.Keys) {
+                if (-not $oldIndex.ContainsKey($rel) -or $oldIndex[$rel] -ne (Get-FileKey $currentFiles[$rel])) { $changed += $rel }
+            }
+            $deleted = @()
+            foreach ($rel in $oldIndex.Keys) { if (-not $currentFiles.ContainsKey($rel)) { $deleted += $rel } }
+            if ($changed.Count -gt 0 -or $deleted.Count -gt 0) {
+                New-Item -ItemType Directory -Path $snapDir -Force | Out-Null
+                $manifest = [System.Collections.Generic.List[string]]::new()
+                foreach ($rel in @($changed + $deleted)) {
+                    if (-not $oldIndex.ContainsKey($rel)) { continue }
+                    $oldFile = Join-Path $src $rel
+                    if (Test-Path -LiteralPath (Get-ArchivePath -DestRoot $Destination -FolderName $name)) {
+                        try {
+                            $extractTo = Join-Path $snapDir "$name\$rel"
+                            Extract-ArchiveFile -Archive $archive -EntryPath $rel -TargetPath $extractTo | Out-Null
+                            [void]$manifest.Add("  $name\$rel")
+                        } catch { }
+                    }
+                }
+                if ($manifest.Count -gt 0) {
+                    Set-Content -LiteralPath (Join-Path $snapDir '_manifest.txt') -Encoding UTF8 -Value (
+                        "Snapshot: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`r`nИзменения в $name`r`n`r`n" +
+                        ($manifest -join "`r`n"))
+                } else { Remove-Item -LiteralPath $snapDir -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+
+            $out = @(Update-ArchiveFromFolder -Archive $archive -SourceFolder $src)
+            foreach ($l in $out) { Write-Log "[$name] $l" }
+            $idx = [ordered]@{}
+            foreach ($rel in $currentFiles.Keys) { $idx[$rel] = Get-FileKey $currentFiles[$rel] }
+            $idx | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $indexFile -Encoding UTF8
+            $result.Copied += $changed.Count
+            Write-Log "[$name] архив обновлён, изменений: $($changed.Count)"
+            foreach ($rel in $deleted) { [void]$allMissing.Add("$name\$rel") }
+        } else {
+            $target = Join-Path $Destination $name
+            New-Item -ItemType Directory -Path $target -Force | Out-Null
+            try {
+                $snap = New-VersionSnapshot -Source $src -Destination $target -VersionsDir $VersionsDir
+                if ($snap) { Write-Log "[$name] сохранена версия" }
+            } catch { Write-Log "[$name] ошибка версии: $($_.Exception.Message)" }
+            $rbArgs = @($src, $target, '/E', '/COPY:DAT', '/R:2', '/W:3', '/NP', '/NFL', '/NDL', "/LOG+:$logFile")
+            & robocopy @rbArgs | Out-Null
+            Write-Log "[$name] $($currentFiles.Count) файл(ов) в копии"
+            $result.Copied += $currentFiles.Count
+            foreach ($rel in @(Get-ChildItem -LiteralPath $target -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($target.Length).TrimStart('\', '/') })) {
+                if (-not $currentFiles.ContainsKey($rel)) { [void]$allMissing.Add("$name\$rel") }
+            }
+        }
     }
 
     $result.Missing = $allMissing.ToArray()
     $result.MissingCount = $allMissing.Count
     if ($allMissing.Count -gt 0) {
-        Write-Log "WARNING: $($allMissing.Count) file(s) missing from sources."
-        $header = "Files in BACKUP but MISSING from source:`r`nGenerated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`r`n`r`n"
-        Set-Content -LiteralPath $missingFile -Value ($header + (($allMissing | ForEach-Object { "  $_" }) -join "`r`n")) -Encoding UTF8
-    } else {
-        Set-Content -LiteralPath $missingFile -Value "No missing files. Checked $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')." -Encoding UTF8
-    }
-
+        $header = "Файлы в копии, но ОТСУТСТВУЮТ на сервере:`r`n$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`r`n`r`n"
+        Set-Content -LiteralPath $missingFile -Encoding UTF8 -Value ($header + (($allMissing | ForEach-Object { "  $_" }) -join "`r`n"))
+    } else { Set-Content -LiteralPath $missingFile -Encoding UTF8 -Value "Пропавших файлов нет." }
     if ($LogRetentionDays -gt 0) {
         $cutoff = (Get-Date).AddDays(-$LogRetentionDays)
         Get-ChildItem -LiteralPath $LogDir -File -ErrorAction SilentlyContinue |
             Where-Object { $_.LastWriteTime -lt $cutoff } | Remove-Item -Force -ErrorAction SilentlyContinue
     }
     $result.Ok = $true
-    Write-Log "=== BACKUP OK ==="
+    Write-Log '=== BACKUP OK ==='
 } catch {
     $result.Error = $_.Exception.Message
     Write-Log "ERROR: $($_.Exception.Message)"
 }
-
 $result | ConvertTo-Json -Depth 4 -Compress
